@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+db.sqlite3
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+.expo/
+.expo-shared/
+
+# Env
+.env
+.env.local
+*.local
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Media / uploads
+backend/media/
+
+# Archives / generated docs bundle
+docs.zip
+
+# Office docs
+*.docx

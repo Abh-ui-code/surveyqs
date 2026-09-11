@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Surface -- cool paper, not stark white, not the cream-and-terracotta default */
+  --paper: 100 8% 97%;
+  --paper-raised: 0 0% 100%;
+  --paper-sunken: 100 8% 94%;
+  --line: 110 10% 87%;
+  --line-strong: 110 8% 78%;
+
+  /* Ink */
+  --ink: 160 18% 13%;
+  --ink-muted: 155 8% 38%;
+  --ink-faint: 150 6% 58%;
+
+  /* Brand -- deep surveyor teal */
+  --brand: 164 55% 27%;
+  --brand-strong: 164 60% 20%;
+  --brand-soft: 164 40% 92%;
+  --brand-contrast: 0 0% 100%;
+
+  /* Signal colors */
+  --amber: 32 52% 45%;          /* flags, attention -- contour-line accent */
+  --amber-soft: 32 60% 93%;
+  --rust: 6 58% 42%;            /* destructive, rejected */
+  --rust-soft: 6 65% 94%;
+  --moss: 142 36% 32%;          /* approved, success */
+  --moss-soft: 142 40% 92%;
+  --slate: 210 12% 45%;         /* neutral info */
+  --slate-soft: 210 20% 93%;
+
+  --radius: 0.5rem;
+  --focus-ring: 164 55% 27%;
+}
+
+:root[data-theme="dark"] {
+  --paper: 160 14% 8%;
+  --paper-raised: 160 12% 11%;
+  --paper-sunken: 160 14% 6%;
+  --line: 155 10% 20%;
+  --line-strong: 155 10% 28%;
+
+  --ink: 100 10% 92%;
+  --ink-muted: 110 6% 68%;
+  --ink-faint: 110 5% 50%;
+
+  --brand: 164 45% 52%;
+  --brand-strong: 164 50% 62%;
+  --brand-soft: 164 30% 18%;
+  --brand-contrast: 160 20% 8%;
+
+  --amber: 32 65% 62%;
+  --amber-soft: 32 40% 18%;
+  --rust: 6 65% 62%;
+  --rust-soft: 6 45% 18%;
+  --moss: 142 40% 55%;
+  --moss-soft: 142 30% 16%;
+  --slate: 210 15% 68%;
+  --slate-soft: 210 15% 18%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: 160 14% 8%;
+    --paper-raised: 160 12% 11%;
+    --paper-sunken: 160 14% 6%;
+    --line: 155 10% 20%;
+    --line-strong: 155 10% 28%;
+
+    --ink: 100 10% 92%;
+    --ink-muted: 110 6% 68%;
+    --ink-faint: 110 5% 50%;
+
+    --brand: 164 45% 52%;
+    --brand-strong: 164 50% 62%;
+    --brand-soft: 164 30% 18%;
+    --brand-contrast: 160 20% 8%;
+
+    --amber: 32 65% 62%;
+    --amber-soft: 32 40% 18%;
+    --rust: 6 65% 62%;
+    --rust-soft: 6 45% 18%;
+    --moss: 142 40% 55%;
+    --moss-soft: 142 30% 16%;
+    --slate: 210 15% 68%;
+    --slate-soft: 210 15% 18%;
+  }
+}
+
+* {
+  border-color: hsl(var(--line));
+}
+
+body {
+  background: hsl(var(--paper));
+  color: hsl(var(--ink));
+  font-feature-settings: "cv05", "cv11";
+}
+
+::selection {
+  background: hsl(var(--brand-soft));
+  color: hsl(var(--brand-strong));
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Reserved for genuine identifier content -- response codes, question
+   codes, schema hashes -- never for decorative labels. */
+.font-mono-data {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
