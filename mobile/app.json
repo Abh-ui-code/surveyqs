@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "SurveyQs Field",
+    "slug": "surveyqs-field",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "surveyqs",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.surveyqs.field",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SurveyQs uses your location to record where each interview took place, when the survey requires it.",
+        "NSCameraUsageDescription": "SurveyQs uses the camera to capture required photos and scan barcodes during an interview.",
+        "NSFaceIDUsageDescription": "SurveyQs uses Face ID to unlock the app quickly so you don't have to type your password every time."
+      }
+    },
+    "android": {
+      "package": "com.surveyqs.field",
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow SurveyQs to record where each interview took place."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "SurveyQs uses Face ID to unlock the app quickly."
+        }
+      ],
+      "expo-font",
+      "expo-secure-store",
+      "expo-status-bar"
+    ],
+    "extra": {
+      "apiUrl": "http://192.168.31.109:8000/api"
+    },
+    "owner": "surveyqs"
+  }
+}

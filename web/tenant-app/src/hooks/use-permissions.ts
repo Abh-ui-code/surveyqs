@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useIsAuthActive } from "@/hooks/use-auth";
 import { authKeys } from "@/lib/query-keys";
 
 export interface MyPermissions {
@@ -13,10 +14,12 @@ export interface MyPermissions {
 }
 
 export function useMyPermissions() {
+  const isAuthActive = useIsAuthActive();
   return useQuery({
     queryKey: authKeys.permissions(),
     queryFn: () => api.get<MyPermissions>("/auth/my-permissions/"),
     staleTime: 5 * 60_000,
+    enabled: isAuthActive,
   });
 }
 

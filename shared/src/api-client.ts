@@ -1,12 +1,20 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { jwtDecode } from "jwt-decode";
-import type { TokenStore } from "./token-store";
 
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
   previous: string | null;
   results: T[];
+}
+
+/** Injected so the same client works against localStorage (web) or an
+ * encrypted secure-store (mobile) without this file knowing which. */
+export interface TokenStore {
+  getAccess(): string | null;
+  getRefresh(): string | null;
+  setTokens(access: string, refresh: string): void;
+  clear(): void;
 }
 
 interface JwtPayload {
@@ -31,13 +39,12 @@ export interface SurveyQsApiClientConfig {
 }
 
 /**
- * One HTTP client for the whole app: proactive refresh before the access
- * token expires (a page firing several parallel requests at the moment of
- * expiry would otherwise 401 all of them at once), a single-flight
- * reactive refresh-and-retry on 401, and the offline-aware rule that only
- * a real 401/403 *with a response* clears credentials -- a network error,
- * timeout or 5xx rethrows and keeps the session, so a dropped connection
- * never signs a user out mid-task.
+ * One HTTP client shared by web and mobile: proactive refresh before the
+ * access token expires, a single-flight reactive refresh-and-retry on 401,
+ * and the rule that only a real 401 *with a response* clears credentials —
+ * a network error, timeout or 5xx rethrows and keeps the session, which
+ * matters even more on mobile than on web since a dropped signal must
+ * never be indistinguishable from being signed out.
  */
 export class SurveyQsApiClient {
   readonly axios: AxiosInstance;
@@ -57,7 +64,6 @@ export class SurveyQsApiClient {
         access = await this.refreshAccessToken();
       }
       if (access) req.headers.Authorization = `Bearer ${access}`;
-      req.headers["X-Request-ID"] = crypto.randomUUID();
       return req;
     });
 
@@ -77,12 +83,6 @@ export class SurveyQsApiClient {
           }
         }
 
-        // Only a real 401 (unauthenticated, and refresh already failed above)
-        // clears credentials. A 403 means the session is valid but lacks
-        // permission for this resource -- signing the user out on every
-        // permission-gated request would make "logged in as a low-privilege
-        // role" indistinguishable from "not logged in". A network error,
-        // timeout, or 5xx must never sign the user out either.
         if (error.response && status === 401 && !isNoRetryPath) {
           this.tokenStore.clear();
           this.onUnauthorized?.();
@@ -150,20 +150,10 @@ export class SurveyQsApiClient {
     });
     return res.data;
   }
-
-  async getBlob(url: string, params?: Record<string, unknown>): Promise<{ blob: Blob; headers: Record<string, string> }> {
-    const res = await this.axios.get(url, { params, responseType: "blob" });
-    const headers: Record<string, string> = {};
-    Object.entries(res.headers).forEach(([k, v]) => {
-      headers[k.toLowerCase()] = String(v);
-    });
-    return { blob: res.data, headers };
-  }
 }
 
-/** DRF returns either `{detail: "..."}` or `{field: ["msg", ...]}`. This is
- * the one place that unwrapping happens, so it is never copy-pasted into
- * every mutation's onError handler. */
+/** DRF returns either `{detail: "..."}` or `{field: ["msg", ...]}`. One
+ * unwrap, shared by both clients' error toasts/messages. */
 export function apiErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
   const data = (error as { response?: { data?: Record<string, unknown> } })?.response?.data;
   if (!data) return error instanceof Error && error.message ? error.message : fallback;

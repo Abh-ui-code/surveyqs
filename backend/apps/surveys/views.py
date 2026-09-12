@@ -9,7 +9,6 @@ from apps.rbac.permissions import HasPermission
 from apps.surveys.models import Choice, ChoiceList, Question, Section, Survey, SurveyCategory
 from apps.surveys.serializers import (
     ChoiceListSerializer,
-    ChoiceSerializer,
     PublishSerializer,
     QuestionSerializer,
     SectionSerializer,

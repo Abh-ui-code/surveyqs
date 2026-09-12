@@ -1,0 +1,18 @@
+{
+  "name": "surveyqs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SurveyQs monorepo — shared package, web (tenant-app), and mobile (field agent app).",
+  "workspaces": [
+    "shared",
+    "web/tenant-app",
+    "mobile"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace=shared",
+    "test:shared": "npm run test --workspace=shared",
+    "typecheck:shared": "npm run typecheck --workspace=shared",
+    "mobile": "npm run start --workspace=mobile",
+    "web": "npm run dev --workspace=web/tenant-app"
+  }
+}

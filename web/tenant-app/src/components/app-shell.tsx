@@ -69,7 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const stillLoading = me.isPending || perms.isPending;
 
   return (
-    <div className="flex min-h-screen bg-paper">
+    <div className="flex h-screen overflow-hidden bg-paper">
       <aside
         className={cn(
           "flex shrink-0 flex-col border-r border-line bg-paper-raised transition-[width] duration-150",

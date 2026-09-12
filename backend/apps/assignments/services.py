@@ -1,7 +1,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.assignments.models import SurveyAssignment, Team
+from apps.assignments.models import SurveyAssignment
 
 
 def user_has_active_assignment(user_id, survey_id) -> bool:

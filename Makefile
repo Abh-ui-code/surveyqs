@@ -2,7 +2,8 @@
 ##
 ## Backend:  Django (backend/)             — venv at backend/.venv
 ## Frontend: Next.js tenant app            — web/tenant-app
-## Mobile:   Expo / React Native           — mobile/ (not yet scaffolded)
+## Mobile:   Expo / React Native           — mobile/
+## Shared:   Types, Zod schemas, API client shared by web + mobile — shared/
 ##
 ## Run `make help` for the full target list.
 
@@ -23,6 +24,7 @@ endif
 
 MANAGE := cd backend && $(PY) manage.py
 WEB    := cd web/tenant-app && $(NPM)
+MOBILE := cd mobile && $(NPM)
 
 # =======================================================================
 # Help
@@ -32,7 +34,7 @@ help:
 	@echo "SurveyQs — common targets"
 	@echo ""
 	@echo "  Setup"
-	@echo "    install              Backend venv + pip install, web npm install"
+	@echo "    install              Backend venv + pip install, root npm install (workspaces)"
 	@echo ""
 	@echo "  Development"
 	@echo "    dev                  backend + web, in parallel (Ctrl+C stops both)"
@@ -40,6 +42,10 @@ help:
 	@echo "    web                  Next.js dev server on :3000"
 	@echo "    web-prod             Production web build + start"
 	@echo "    build                Production build of the web app"
+	@echo "    mobile               Expo dev server (scan the QR with Expo Go)"
+	@echo "    mobile-android       Native Android build + run (requires an emulator/device)"
+	@echo "    mobile-ios           Native iOS build + run (macOS only)"
+	@echo "    mobile-build         EAS internal APK build (preview profile)"
 	@echo ""
 	@echo "  Database"
 	@echo "    migrate              Migrate the public/shared schema"
@@ -52,8 +58,8 @@ help:
 	@echo ""
 	@echo "  Quality"
 	@echo "    test                 Run backend tests (pytest)"
-	@echo "    lint                 Ruff (backend) + eslint (web)"
-	@echo "    typecheck            tsc --noEmit on the web app"
+	@echo "    lint                 Ruff (backend) + eslint (web + mobile)"
+	@echo "    typecheck            tsc --noEmit on shared, web and mobile"
 	@echo ""
 	@echo "  Housekeeping"
 	@echo "    clean                Remove venv, node_modules, __pycache__, build output"
@@ -65,7 +71,7 @@ help:
 install:
 	cd backend && python3 -m venv .venv && $(PIP) install --upgrade pip
 	cd backend && $(PIP) install -r requirements/development.txt
-	$(WEB) install
+	$(NPM) install
 
 # =======================================================================
 # Development
@@ -86,6 +92,20 @@ web-prod: build
 
 build:
 	$(WEB) run build
+
+.PHONY: mobile mobile-android mobile-ios mobile-build
+
+mobile:
+	$(MOBILE) start
+
+mobile-android:
+	$(MOBILE) run android
+
+mobile-ios:
+	$(MOBILE) run ios
+
+mobile-build:
+	cd mobile && npx eas build --profile preview --platform android
 
 # =======================================================================
 # Database
@@ -127,9 +147,12 @@ test:
 lint:
 	cd backend && $(VENV_BIN)/ruff check .
 	$(WEB) run lint
+	$(MOBILE) run lint
 
 typecheck:
+	cd shared && npx tsc --noEmit
 	$(WEB) exec tsc --noEmit
+	$(MOBILE) exec tsc --noEmit
 
 # =======================================================================
 # Housekeeping
@@ -138,4 +161,5 @@ typecheck:
 
 clean:
 	rm -rf backend/.venv backend/**/__pycache__ backend/staticfiles
-	rm -rf web/tenant-app/node_modules web/tenant-app/.next
+	rm -rf node_modules web/tenant-app/node_modules web/tenant-app/.next
+	rm -rf shared/node_modules mobile/node_modules mobile/.expo

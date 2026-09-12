@@ -3,7 +3,7 @@ Permission evaluation and tenant-schema seeding. Must run inside
 `schema_context(tenant.schema_name)` -- these are all tenant-schema models.
 """
 from apps.rbac.constants import DEFAULT_PERMISSIONS, MODULE_CHOICES, SYSTEM_ROLES
-from apps.rbac.models import Module, Role, RolePermission, TenantModule, UserRole
+from apps.rbac.models import Module, Role, RolePermission, TenantModule
 
 
 def provision_tenant_defaults(tenant):

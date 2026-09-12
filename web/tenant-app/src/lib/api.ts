@@ -18,12 +18,14 @@ function resolveApiBase(): string {
   return "http://127.0.0.1:8000/api";
 }
 
+let hasRedirectedToLogin = false;
+
 export const api = new SurveyQsApiClient({
   baseUrl: resolveApiBase(),
   tokenStore: localStorageTokenStore("surveyqs"),
   onUnauthorized: () => {
-    if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
+    if (typeof window === "undefined" || hasRedirectedToLogin || window.location.pathname === "/login") return;
+    hasRedirectedToLogin = true;
+    window.location.href = "/login";
   },
 });

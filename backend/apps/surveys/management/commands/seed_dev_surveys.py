@@ -26,10 +26,9 @@ class Command(BaseCommand):
 
     def _seed(self, tenant):
         from apps.assignments.services import create_assignments
-        from apps.rbac.models import UserRole
         from apps.surveys.models import Question, Section, Survey, SurveyCategory
         from apps.surveys.services import publish_survey
-        from apps.users.models import User, UserTenantMembership
+        from apps.users.models import User
 
         base = settings.TENANT_BASE_DOMAIN
         admin = User.objects.get(email=f"admin@{tenant.subdomain}.{base}")

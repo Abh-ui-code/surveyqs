@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.rbac.constants import ACTION_CODES
-from apps.rbac.models import Module, Role, RolePermission, TenantModule
+from apps.rbac.models import Module, Role
 
 
 class ModuleSerializer(serializers.ModelSerializer):
