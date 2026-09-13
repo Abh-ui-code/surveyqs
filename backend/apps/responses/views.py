@@ -31,7 +31,7 @@ class ResponseViewSet(TenantScopedMixin, ReadOnlyModelViewSet):
     # including admins, with a generic 403 before either method ever ran.
     REQUIRED_ACTIONS = {"GET": "view", "POST": "approve", "PATCH": "edit", "DELETE": "delete"}
     permission_classes = [HasPermission]
-    filterset_fields = ["survey", "survey_version", "status", "assignment"]
+    filterset_fields = ["survey", "survey_version", "status", "assignment", "respondent"]
     search_fields = ["response_code", "respondent__full_name", "respondent__phone"]
     ordering_fields = ["submitted_at", "duration_seconds", "status"]
     ordering = ["-submitted_at"]

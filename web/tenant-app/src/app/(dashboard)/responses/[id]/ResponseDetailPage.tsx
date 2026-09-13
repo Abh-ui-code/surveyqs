@@ -2,6 +2,7 @@
 
 import { ArrowLeft, Check, Flag, MapPin, X } from "lucide-react";
 import Link from "next/link";
+import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -13,15 +14,32 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/permission-gate";
 import { canAccess, useMyPermissions } from "@/hooks/use-permissions";
 import { apiErrorMessage } from "@/lib/api-client/client";
+import { branchParentCode, displayAnswer, type ChoiceListDef } from "@/lib/form-schema";
 import { formatDateTime, formatDuration } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { useVersionSchema } from "../../surveys/[id]/collect/_hooks/use-collect";
 import { RejectDialog } from "./_components/reject-dialog";
 import { useApproveResponse, useResponse } from "../_hooks/use-responses";
 
 function DetailContent({ responseId }: { responseId: string }) {
   const response = useResponse(responseId);
+  const schema = useVersionSchema(response.data?.survey ?? "", response.data?.version_number);
   const approve = useApproveResponse(responseId);
   const perms = useMyPermissions();
   const canReview = canAccess(perms.data, "responses", "approve");
+
+  const choiceLists = useMemo(() => {
+    const map: Record<string, ChoiceListDef> = {};
+    schema.data?.choice_lists.forEach((cl) => {
+      map[cl.name] = cl;
+    });
+    return map;
+  }, [schema.data]);
+
+  const choiceLabel = (listName: string, value: string) => {
+    const choice = choiceLists[listName]?.choices.find((c) => c.value === value);
+    return choice?.label.en ?? value;
+  };
 
   if (response.isPending) {
     return (
@@ -37,6 +55,10 @@ function DetailContent({ responseId }: { responseId: string }) {
   }
 
   const r = response.data;
+  const answerCodes = new Set(Object.keys(r.answers));
+  const codesShownFromSchema = new Set<string>(
+    schema.data?.sections.flatMap((s) => s.questions.map((q) => q.code)).filter((code) => answerCodes.has(code)) ?? [],
+  );
 
   return (
     <div>
@@ -96,10 +118,65 @@ function DetailContent({ responseId }: { responseId: string }) {
             <CardHeader>
               <CardTitle>Answers</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {Object.entries(r.answers).length === 0 ? (
+            <CardContent className="space-y-5">
+              {Object.keys(r.answers).length === 0 ? (
                 <p className="text-sm text-ink-muted">No answers recorded.</p>
+              ) : schema.isPending ? (
+                <Skeleton className="h-40 w-full" />
+              ) : schema.data ? (
+                <>
+                  {schema.data.sections
+                    .filter((section) => section.questions.some((q) => answerCodes.has(q.code)))
+                    .map((section) => (
+                      <div key={section.id} className="space-y-3">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-brand-strong">
+                          {section.title.en ?? section.code}
+                        </h4>
+                        <div className="space-y-3">
+                          {section.questions
+                            .filter((q) => answerCodes.has(q.code))
+                            .map((q) => {
+                              const isBranch = branchParentCode(section, q) !== null;
+                              return (
+                                <div
+                                  key={q.id}
+                                  className={cn(
+                                    "border-b border-line pb-3 last:border-0 last:pb-0",
+                                    isBranch && "ml-4 border-l-2 border-brand/25 pl-4",
+                                  )}
+                                >
+                                  <p className="text-xs text-ink-faint">{q.label.en ?? q.code}</p>
+                                  <p className="mt-0.5 text-sm text-ink">
+                                    {displayAnswer(q, r.answers[q.code], choiceLabel)}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ))}
+
+                  {Object.entries(r.answers).filter(([code]) => !codesShownFromSchema.has(code)).length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Other answers</h4>
+                      <div className="space-y-3">
+                        {Object.entries(r.answers)
+                          .filter(([code]) => !codesShownFromSchema.has(code))
+                          .map(([code, value]) => (
+                            <div key={code} className="border-b border-line pb-3 last:border-0 last:pb-0">
+                              <p className="font-mono-data text-xs text-ink-faint">{code}</p>
+                              <p className="mt-0.5 text-sm text-ink">
+                                {Array.isArray(value) ? value.join(", ") : String(value)}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
+                // The version schema couldn't be loaded -- fall back to the
+                // raw stored answers rather than showing nothing.
                 Object.entries(r.answers).map(([code, value]) => (
                   <div key={code} className="border-b border-line pb-3 last:border-0 last:pb-0">
                     <p className="font-mono-data text-xs text-ink-faint">{code}</p>

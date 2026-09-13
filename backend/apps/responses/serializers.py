@@ -48,13 +48,18 @@ class ResponseReviewSerializer(serializers.ModelSerializer):
 
 
 class ResponseDetailSerializer(ResponseListSerializer):
+    # Lets the client fetch this exact version's schema (GET
+    # /surveys/{id}/versions/{version_number}/) to render `answers` grouped
+    # by section, in question order, with labels instead of raw codes --
+    # see web/tenant-app's ResponseDetailPage.
+    version_number = serializers.IntegerField(source="survey_version.version_number", read_only=True)
     attachments = ResponseAttachmentSerializer(many=True, read_only=True)
     flags = ResponseFlagSerializer(many=True, read_only=True)
     reviews = ResponseReviewSerializer(many=True, read_only=True)
 
     class Meta(ResponseListSerializer.Meta):
         fields = ResponseListSerializer.Meta.fields + [
-            "answers", "started_at", "gps_lat", "gps_lng", "gps_accuracy_m",
+            "version_number", "answers", "started_at", "gps_lat", "gps_lng", "gps_accuracy_m",
             "device_id", "app_version", "is_edited", "attachments", "flags", "reviews",
         ]
 

@@ -2,57 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { FormPackage } from "@/lib/form-schema";
 import { assignmentKeys, consentKeys, respondentKeys, surveyKeys } from "@/lib/query-keys";
 
-export interface ChoiceDef {
-  value: string;
-  label: Record<string, string>;
-  order: number;
-  attrs: Record<string, unknown>;
-  active: boolean;
-}
-
-export interface ChoiceListDef {
-  name: string;
-  attributes: Record<string, unknown>;
-  choices: ChoiceDef[];
-}
-
-export interface SchemaQuestion {
-  id: string;
-  code: string;
-  order: number;
-  type: string;
-  label: Record<string, string>;
-  hint: Record<string, string>;
-  required: boolean | string;
-  relevant: string | null;
-  constraint: string | null;
-  constraint_message: Record<string, string> | null;
-  config: Record<string, unknown> & { choice_list?: string; min?: number; max?: number; decimal_places?: number };
-  questions?: SchemaQuestion[];
-}
-
-export interface SchemaSection {
-  id: string;
-  code: string;
-  order: number;
-  title: Record<string, string>;
-  description: Record<string, string>;
-  questions: SchemaQuestion[];
-}
-
-export interface FormPackage {
-  schema_version: string;
-  survey_id: string;
-  version_number: number;
-  title: string;
-  description: string;
-  instructions: string;
-  settings: Record<string, unknown>;
-  choice_lists: ChoiceListDef[];
-  sections: SchemaSection[];
-}
+// The form package shape lives in @/lib/form-schema (shared with the
+// response detail page); re-exported here so existing imports of these
+// types from this hooks file keep working.
+export type { ChoiceDef, ChoiceListDef, SchemaQuestion, SchemaSection, FormPackage } from "@/lib/form-schema";
 
 export interface AssignmentSummary {
   id: string;

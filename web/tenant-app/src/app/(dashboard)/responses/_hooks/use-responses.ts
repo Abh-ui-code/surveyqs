@@ -21,6 +21,7 @@ export interface ResponseRow {
 }
 
 export interface ResponseDetail extends ResponseRow {
+  version_number: number;
   answers: Record<string, unknown>;
   started_at: string;
   gps_lat: number | null;
@@ -38,6 +39,7 @@ export interface ResponseFilters {
   survey?: string;
   status?: string;
   search?: string;
+  respondent?: string;
   page?: number;
   page_size?: number;
 }

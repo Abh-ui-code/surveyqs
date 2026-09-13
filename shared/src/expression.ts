@@ -14,10 +14,14 @@
  *   true / false         boolean literals
  *   123 / 12.5           number literals
  *   'text' / "text"      string literals
+ *   selected(a, b)       multi-select membership -- the one function call
+ *                        this evaluator knows, kept in lockstep with
+ *                        backend/apps/formlogic/functions.py::_selected
  *
  * No eval(), no Function() — every expression is tokenized and walked by
  * hand, so a malformed or malicious string can only ever throw, never run
- * arbitrary code.
+ * arbitrary code. Any function name other than `selected` throws rather
+ * than silently matching -- see callFunction below.
  */
 import type { AnswerMap } from "./types";
 
@@ -31,6 +35,8 @@ type Token =
   | { kind: "and" }
   | { kind: "or" }
   | { kind: "not" }
+  | { kind: "ident"; name: string }
+  | { kind: "comma" }
   | { kind: "lparen" }
   | { kind: "rparen" };
 
@@ -50,6 +56,11 @@ function tokenize(expr: string): Token[] {
     }
     if (c === ")") {
       tokens.push({ kind: "rparen" });
+      i += 1;
+      continue;
+    }
+    if (c === ",") {
+      tokens.push({ kind: "comma" });
       i += 1;
       continue;
     }
@@ -113,7 +124,7 @@ function tokenize(expr: string): Token[] {
       else if (word === "not") tokens.push({ kind: "not" });
       else if (word === "true") tokens.push({ kind: "bool", value: true });
       else if (word === "false") tokens.push({ kind: "bool", value: false });
-      else throw new Error(`Unexpected identifier "${word}" in: ${expr}`);
+      else tokens.push({ kind: "ident", name: word });
       i = j;
       continue;
     }
@@ -218,9 +229,40 @@ class Parser {
         if (this.next().kind !== "rparen") throw new Error("Expected closing parenthesis");
         return value;
       }
+      case "ident": {
+        if (this.next().kind !== "lparen") throw new Error(`Expected "(" after "${t.name}"`);
+        const args: unknown[] = [];
+        if (this.peek()?.kind !== "rparen") {
+          args.push(this.orExpr());
+          while (this.peek()?.kind === "comma") {
+            this.next();
+            args.push(this.orExpr());
+          }
+        }
+        if (this.next()?.kind !== "rparen") throw new Error("Expected closing parenthesis");
+        return callFunction(t.name, args);
+      }
       default:
         throw new Error(`Unexpected token: ${t.kind}`);
     }
+  }
+}
+
+function asList(value: unknown): unknown[] {
+  if (value === null || value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+/** Kept in lockstep with backend/apps/formlogic/functions.py -- only
+ * `selected` is implemented; any other name throws (never silently
+ * matches), which `evaluateExpression` turns into its `fallback`. */
+function callFunction(name: string, args: unknown[]): unknown {
+  switch (name) {
+    case "selected":
+      if (args.length !== 2) throw new Error(`selected() takes 2 arguments, got ${args.length}`);
+      return asList(args[0]).includes(args[1]);
+    default:
+      throw new Error(`Unsupported function "${name}"`);
   }
 }
 

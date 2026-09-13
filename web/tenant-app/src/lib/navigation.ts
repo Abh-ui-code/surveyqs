@@ -4,6 +4,7 @@ import {
   ListChecks,
   ShieldCheck,
   Sliders,
+  UsersRound,
   Users2,
   type LucideIcon,
 } from "lucide-react";
@@ -34,15 +35,16 @@ function leaf(href: string, label: string, icon: LucideIcon, module: string): Na
  * Every leaf carries the module it gates on. Filtering by module happens
  * once, in AppShell -- the nav array itself is a plain data structure.
  *
- * Scoped to what has been built: dashboard, surveys, responses, and an
- * Administration group (users, roles & permissions, workspace settings).
- * Assignments, respondents and audit have working backend endpoints
- * (see backend/apps/*) but no web screens yet -- adding their nav entries
- * before the pages exist would just be dead links.
+ * Scoped to what has been built: dashboard, surveys, respondents, responses,
+ * and an Administration group (users, roles & permissions, workspace
+ * settings). Assignments and audit have working backend endpoints (see
+ * backend/apps/*) but no web screens yet -- adding their nav entries before
+ * the pages exist would just be dead links.
  */
 export const NAV: NavEntry[] = [
   leaf("/", "Dashboard", LayoutDashboard, "reports"),
   leaf("/surveys", "Surveys", ListChecks, "surveys"),
+  leaf("/respondents", "Respondents", UsersRound, "respondents"),
   leaf("/responses", "Responses", BarChart3, "responses"),
   {
     kind: "group",

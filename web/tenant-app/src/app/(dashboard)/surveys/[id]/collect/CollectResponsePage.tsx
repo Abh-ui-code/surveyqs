@@ -1,5 +1,6 @@
 "use client";
 
+import { type AnswerMap } from "@surveyqs/shared";
 import { ArrowLeft, ArrowRight, Check, ClipboardCheck, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -13,6 +14,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/permission-gate";
 import { useMyPermissions } from "@/hooks/use-permissions";
 import { apiErrorMessage } from "@/lib/api-client/client";
+import {
+  branchParentCode,
+  displayAnswer,
+  isQuestionRelevant,
+  isSectionRelevant,
+  relevantQuestionCodes,
+} from "@/lib/form-schema";
 import { cn } from "@/lib/utils";
 import { useSurvey } from "../../_hooks/use-surveys";
 import { QuestionField, isQuestionAnswered, type AnswerValue } from "./_components/question-field";
@@ -28,7 +36,6 @@ import {
   useVersionSchema,
   type ChoiceListDef,
   type Respondent,
-  type SchemaQuestion,
 } from "./_hooks/use-collect";
 
 function Stepper({ steps, current }: { steps: string[]; current: number }) {
@@ -60,24 +67,6 @@ function Stepper({ steps, current }: { steps: string[]; current: number }) {
       ))}
     </div>
   );
-}
-
-function displayAnswer(question: SchemaQuestion, value: AnswerValue | undefined, choiceLabel: (code: string, v: string) => string): string {
-  if (value === undefined) return "—";
-  switch (question.type) {
-    case "yes_no":
-      return value ? "Yes" : "No";
-    case "select_one":
-      return choiceLabel(question.config.choice_list as string, value as string);
-    case "select_multiple":
-      return (value as string[]).map((v) => choiceLabel(question.config.choice_list as string, v)).join(", ");
-    case "geopoint": {
-      const g = value as { lat: number; lng: number };
-      return `${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`;
-    }
-    default:
-      return String(value);
-  }
 }
 
 function CollectContent({ surveyId }: { surveyId: string }) {
@@ -117,6 +106,19 @@ function CollectContent({ surveyId }: { surveyId: string }) {
   };
 
   const questions = useMemo(() => schema.data?.sections.flatMap((s) => s.questions) ?? [], [schema.data]);
+
+  const answersForEval = useMemo(() => {
+    const map: Record<string, unknown> = {};
+    for (const [code, value] of Object.entries(answers)) {
+      if (value !== undefined) map[code] = value;
+    }
+    return map as AnswerMap;
+  }, [answers]);
+
+  const relevantCodes = useMemo(
+    () => relevantQuestionCodes(schema.data?.sections ?? [], answersForEval),
+    [schema.data, answersForEval],
+  );
 
   const consentRequired = !!survey.data?.settings?.consent_required && !survey.data?.settings?.anonymous;
   const steps = ["Respondent", ...(consentRequired ? ["Consent"] : []), "Answers", "Review"];
@@ -173,6 +175,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
     const errors: Record<string, string> = {};
     for (const q of questions) {
       if (q.type === "note") continue;
+      if (!relevantCodes.has(q.code)) continue;
       const value = q.type === "image" ? imageFiles[q.code] : answers[q.code];
       if (!isQuestionAnswered(q, value)) {
         errors[q.code] = "This question is required.";
@@ -221,10 +224,10 @@ function CollectContent({ surveyId }: { surveyId: string }) {
   const handleSubmit = () => {
     const cleanedAnswers: Record<string, unknown> = {};
     for (const [code, value] of Object.entries(answers)) {
-      if (value !== undefined) cleanedAnswers[code] = value;
+      if (value !== undefined && relevantCodes.has(code)) cleanedAnswers[code] = value;
     }
     for (const [code, file] of Object.entries(imageFiles)) {
-      if (file) cleanedAnswers[code] = file.name;
+      if (file && relevantCodes.has(code)) cleanedAnswers[code] = file.name;
     }
 
     submitResponse.mutate(
@@ -240,7 +243,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
       },
       {
         onSuccess: async (result) => {
-          const uploads = Object.entries(imageFiles).filter(([, f]) => f);
+          const uploads = Object.entries(imageFiles).filter(([code, f]) => f && relevantCodes.has(code));
           if (uploads.length > 0 && result.id) {
             try {
               await Promise.all(
@@ -349,27 +352,38 @@ function CollectContent({ surveyId }: { surveyId: string }) {
 
       {step === answersStepIndex && (
         <div className="space-y-4">
-          {schema.data.sections.map((section) => (
-            <Card key={section.id}>
-              <CardHeader>
-                <CardTitle>{section.title.en ?? section.code}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {section.questions.map((q) => (
-                  <QuestionField
-                    key={q.id}
-                    question={q}
-                    choiceLists={choiceLists}
-                    value={answers[q.code]}
-                    error={fieldErrors[q.code]}
-                    onChange={(v) => setAnswers((a) => ({ ...a, [q.code]: v }))}
-                    imageFile={imageFiles[q.code]}
-                    onImageChange={(f) => setImageFiles((files) => ({ ...files, [q.code]: f }))}
-                  />
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+          {schema.data.sections
+            .filter((section) => isSectionRelevant(section, answersForEval))
+            .map((section) => (
+              <Card key={section.id}>
+                <CardHeader>
+                  <CardTitle>{section.title.en ?? section.code}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {section.questions
+                    .filter((q) => isQuestionRelevant(section, q, answersForEval))
+                    .map((q) => {
+                      const isBranch = branchParentCode(section, q) !== null;
+                      return (
+                        <div
+                          key={q.id}
+                          className={isBranch ? "ml-4 border-l-2 border-brand/25 pl-4" : undefined}
+                        >
+                          <QuestionField
+                            question={q}
+                            choiceLists={choiceLists}
+                            value={answers[q.code]}
+                            error={fieldErrors[q.code]}
+                            onChange={(v) => setAnswers((a) => ({ ...a, [q.code]: v }))}
+                            imageFile={imageFiles[q.code]}
+                            onImageChange={(f) => setImageFiles((files) => ({ ...files, [q.code]: f }))}
+                          />
+                        </div>
+                      );
+                    })}
+                </CardContent>
+              </Card>
+            ))}
         </div>
       )}
 
@@ -384,25 +398,38 @@ function CollectContent({ surveyId }: { surveyId: string }) {
               <p className="text-xs text-ink-muted">{respondent?.phone || respondent?.email || "No contact info"}</p>
             </CardContent>
           </Card>
-          {schema.data.sections.map((section) => (
-            <Card key={section.id}>
-              <CardHeader>
-                <CardTitle>{section.title.en ?? section.code}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2.5">
-                {section.questions.map((q) => (
-                  <div key={q.id} className="flex items-start justify-between gap-4 text-sm">
-                    <span className="text-ink-muted">{q.label.en}</span>
-                    <span className="max-w-[60%] text-right font-medium text-ink">
-                      {q.type === "image"
-                        ? imageFiles[q.code]?.name ?? "—"
-                        : displayAnswer(q, answers[q.code], choiceLabel)}
-                    </span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+          {schema.data.sections
+            .filter((section) => isSectionRelevant(section, answersForEval))
+            .map((section) => (
+              <Card key={section.id}>
+                <CardHeader>
+                  <CardTitle>{section.title.en ?? section.code}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2.5">
+                  {section.questions
+                    .filter((q) => relevantCodes.has(q.code))
+                    .map((q) => {
+                      const isBranch = branchParentCode(section, q) !== null;
+                      return (
+                        <div
+                          key={q.id}
+                          className={cn(
+                            "flex items-start justify-between gap-4 text-sm",
+                            isBranch && "ml-4 border-l-2 border-brand/25 pl-4",
+                          )}
+                        >
+                          <span className="text-ink-muted">{q.label.en}</span>
+                          <span className="max-w-[60%] text-right font-medium text-ink">
+                            {q.type === "image"
+                              ? imageFiles[q.code]?.name ?? "—"
+                              : displayAnswer(q, answers[q.code], choiceLabel)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </CardContent>
+              </Card>
+            ))}
         </div>
       )}
 

@@ -36,6 +36,7 @@ export interface Question {
   relevant: string;
   constraint: string;
   constraint_message: Record<string, string>;
+  choice_list: string | null;
   config: Record<string, unknown>;
 }
 
@@ -47,12 +48,28 @@ export interface Section {
   questions: Question[];
 }
 
+export interface Choice {
+  id: string;
+  value: string;
+  label: Record<string, string>;
+  order: number;
+  attrs: Record<string, unknown>;
+  is_active: boolean;
+}
+
+export interface ChoiceListItem {
+  id: string;
+  name: string;
+  attributes: unknown[];
+  choices: Choice[];
+}
+
 export interface SurveyDraft {
   id: string;
   version_number: number;
   status: string;
   sections: Section[];
-  choice_lists: unknown[];
+  choice_lists: ChoiceListItem[];
 }
 
 export function useCategories() {
@@ -122,6 +139,8 @@ export function useCreateQuestion(surveyId: string) {
       type: string;
       label: Record<string, string>;
       is_required?: string;
+      relevant?: string;
+      choice_list?: string | null;
       config?: Record<string, unknown>;
     }) => api.post<Question>(`/surveys/${surveyId}/draft/questions/`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: surveyKeys.draft(surveyId) }),
@@ -141,6 +160,8 @@ export function useUpdateQuestion(surveyId: string) {
         type: string;
         label: Record<string, string>;
         is_required?: string;
+        relevant?: string;
+        choice_list?: string | null;
         config?: Record<string, unknown>;
       };
     }) => api.patch<Question>(`/surveys/${surveyId}/draft/questions/${questionId}/`, data),
@@ -152,6 +173,31 @@ export function useDeleteQuestion(surveyId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (questionId: string) => api.delete(`/surveys/${surveyId}/draft/questions/${questionId}/`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: surveyKeys.draft(surveyId) }),
+  });
+}
+
+export function useCreateChoiceList(surveyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      choices: { value: string; label: Record<string, string>; order: number }[];
+    }) => api.post<ChoiceListItem>(`/surveys/${surveyId}/draft/choice-lists/`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: surveyKeys.draft(surveyId) }),
+  });
+}
+
+export function useUpdateChoiceList(surveyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      choiceListId,
+      data,
+    }: {
+      choiceListId: string;
+      data: { choices: { value: string; label: Record<string, string>; order: number }[] };
+    }) => api.patch<ChoiceListItem>(`/surveys/${surveyId}/draft/choice-lists/${choiceListId}/`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: surveyKeys.draft(surveyId) }),
   });
 }

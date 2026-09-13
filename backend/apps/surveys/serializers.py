@@ -91,6 +91,36 @@ class ChoiceListSerializer(serializers.ModelSerializer):
             })
         return choice_list
 
+    def update(self, instance, validated_data):
+        # ModelSerializer.update() doesn't support writable nested fields,
+        # so `choices` needs its own full-replace-by-value sync (matching
+        # `create()`'s upsert semantics) rather than falling through to the
+        # default implementation.
+        choices_data = validated_data.pop("choices", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if choices_data is not None:
+            existing = {c.value: c for c in instance.choices.all()}
+            seen_values = set()
+            for i, choice_data in enumerate(choices_data):
+                fields = {k: v for k, v in choice_data.items() if k != "order"}
+                value = fields.get("value")
+                seen_values.add(value)
+                order = choice_data.get("order", i)
+                choice = existing.get(value)
+                if choice is not None:
+                    for k, v in fields.items():
+                        setattr(choice, k, v)
+                    choice.order = order
+                    choice.save()
+                else:
+                    Choice.objects.create(choice_list=instance, order=order, **fields)
+            instance.choices.exclude(value__in=seen_values).delete()
+
+        return instance
+
 
 class QuestionSerializer(serializers.ModelSerializer):
     order = serializers.IntegerField(required=False)  # server-assigned by default; see views.perform_create

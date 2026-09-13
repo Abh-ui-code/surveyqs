@@ -93,6 +93,8 @@ function BuilderContent({ surveyId }: { surveyId: string }) {
               <AddQuestionDrawer
                 surveyId={surveyId}
                 sectionId={section.id}
+                sections={draft.data?.sections ?? []}
+                choiceLists={draft.data?.choice_lists ?? []}
                 trigger={
                   <Button variant="ghost" size="sm">
                     <Plus className="h-4 w-4" /> Question
@@ -125,6 +127,8 @@ function BuilderContent({ surveyId }: { surveyId: string }) {
                       <EditQuestionDrawer
                         surveyId={surveyId}
                         question={q}
+                        sections={draft.data?.sections ?? []}
+                        choiceLists={draft.data?.choice_lists ?? []}
                         trigger={
                           <button className="rounded-md p-1.5 text-ink-faint hover:bg-paper-sunken hover:text-ink" title="Edit question">
                             <Pencil className="h-4 w-4" />
