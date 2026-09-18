@@ -34,6 +34,8 @@ help:
 	@echo "SurveyQs — common targets"
 	@echo ""
 	@echo "  Setup"
+	@echo "    setup                Full first-time setup: deps + DB + migrate + seed (scripts/setup-new-system.sh)"
+	@echo "    setup-sudo           Same, with SUDO_PASSWORD=xxx for parity with services that need sudo"
 	@echo "    install              Backend venv + pip install, root npm install (workspaces)"
 	@echo ""
 	@echo "  Development"
@@ -67,7 +69,17 @@ help:
 # =======================================================================
 # Setup
 # =======================================================================
-.PHONY: install
+.PHONY: setup setup-sudo install
+
+setup:
+	bash scripts/setup-new-system.sh
+
+setup-sudo:
+	@if [ -z "$(SUDO_PASSWORD)" ]; then \
+		echo "Usage: make setup-sudo SUDO_PASSWORD=xxx"; exit 1; \
+	fi
+	SUDO_PASSWORD=$(SUDO_PASSWORD) bash scripts/setup-new-system.sh
+
 install:
 	cd backend && python3 -m venv .venv && $(PIP) install --upgrade pip
 	cd backend && $(PIP) install -r requirements/development.txt
@@ -129,6 +141,7 @@ superuser:
 seed:
 	$(MANAGE) seed_dev_tenant --subdomain abc --name "ABC Company"
 	$(MANAGE) seed_dev_surveys --subdomain abc
+	$(MANAGE) seed_question_bank --subdomain abc
 
 shell:
 	$(MANAGE) shell
