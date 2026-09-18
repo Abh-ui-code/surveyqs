@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/", health),
     path("api/auth/", include("apps.authentication.urls")),
     path("api/", include("apps.surveys.urls")),
+    path("api/", include("apps.question_bank.urls")),
     path("api/", include("apps.assignments.urls")),
     path("api/", include("apps.respondents.urls")),
     path("api/", include("apps.responses.urls")),

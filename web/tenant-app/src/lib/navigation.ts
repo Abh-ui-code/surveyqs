@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  BookOpen,
   LayoutDashboard,
   ListChecks,
   ShieldCheck,
@@ -36,16 +37,17 @@ function leaf(href: string, label: string, icon: LucideIcon, module: string): Na
  * once, in AppShell -- the nav array itself is a plain data structure.
  *
  * Scoped to what has been built: dashboard, surveys, respondents, responses,
- * and an Administration group (users, roles & permissions, workspace
- * settings). Assignments and audit have working backend endpoints (see
- * backend/apps/*) but no web screens yet -- adding their nav entries before
- * the pages exist would just be dead links.
+ * a standalone Question bank entry, and an Administration group (users,
+ * roles & permissions, workspace settings). Assignments and audit have
+ * working backend endpoints (see backend/apps/*) but no web screens yet --
+ * adding their nav entries before the pages exist would just be dead links.
  */
 export const NAV: NavEntry[] = [
   leaf("/", "Dashboard", LayoutDashboard, "reports"),
   leaf("/surveys", "Surveys", ListChecks, "surveys"),
   leaf("/respondents", "Respondents", UsersRound, "respondents"),
   leaf("/responses", "Responses", BarChart3, "responses"),
+  leaf("/admin/question-bank", "Question bank", BookOpen, "settings"),
   {
     kind: "group",
     id: "administration",

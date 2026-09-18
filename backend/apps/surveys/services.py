@@ -165,6 +165,52 @@ def _clone_question(question, new_section, choice_list_map, parent):
     )
 
 
+def _unique_code_for_version(base_code: str, version: SurveyVersion) -> str:
+    """A bank question's code may already be used elsewhere in this draft
+    (e.g. inserted before, or a hand-authored question with the same name)
+    -- suffix it rather than fail the insert outright."""
+    existing = set(Question.objects.filter(section__version=version).values_list("code", flat=True))
+    if base_code not in existing:
+        return base_code
+    n = 2
+    while f"{base_code}_{n}" in existing:
+        n += 1
+    return f"{base_code}_{n}"
+
+
+def create_question_from_bank(section: Section, bank_question) -> Question:
+    """Copies a `BankQuestion` into `section` as an ordinary `Question`.
+    Skip-logic fields (`relevant`/`calculation`/`default_value`) are
+    deliberately left blank -- a bank question has no fixed position in any
+    survey, so any condition would reference the wrong questions here."""
+    from apps.surveys.models import Choice, ChoiceList
+
+    version = section.version
+    code = _unique_code_for_version(bank_question.code, version)
+    next_order = Question.objects.filter(section=section).count()
+
+    choice_list = None
+    if bank_question.choices:
+        choice_list = ChoiceList.objects.create(version=version, name=f"{code}_choices")
+        Choice.objects.bulk_create(
+            [
+                Choice(
+                    choice_list=choice_list,
+                    value=c["value"], label=c["label"], order=c.get("order", i),
+                )
+                for i, c in enumerate(bank_question.choices)
+            ]
+        )
+
+    return Question.objects.create(
+        section=section, code=code, type=bank_question.type, order=next_order,
+        label=bank_question.label, hint=bank_question.hint,
+        is_required=bank_question.is_required, is_pii=bank_question.is_pii,
+        constraint=bank_question.constraint, constraint_message=bank_question.constraint_message,
+        choice_list=choice_list, config=bank_question.config,
+    )
+
+
 def next_version_number(survey: Survey) -> int:
     latest = survey.versions.filter(status="published").order_by("-version_number").first()
     return (latest.version_number + 1) if latest else 1

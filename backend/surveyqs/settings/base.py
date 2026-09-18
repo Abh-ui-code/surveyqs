@@ -65,6 +65,7 @@ TENANT_APPS = [
     "django.contrib.contenttypes",
     "apps.rbac",
     "apps.surveys",
+    "apps.question_bank",
     "apps.formlogic",
     "apps.assignments",
     "apps.respondents",

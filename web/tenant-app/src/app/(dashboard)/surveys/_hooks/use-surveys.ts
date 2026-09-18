@@ -147,6 +147,15 @@ export function useCreateQuestion(surveyId: string) {
   });
 }
 
+export function useCreateQuestionFromBank(surveyId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { bank_question_id: string; section_id: string }) =>
+      api.post<Question>(`/surveys/${surveyId}/draft/questions/from-bank/`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: surveyKeys.draft(surveyId) }),
+  });
+}
+
 export function useUpdateQuestion(surveyId: string) {
   const qc = useQueryClient();
   return useMutation({

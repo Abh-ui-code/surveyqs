@@ -1,4 +1,5 @@
 from django.db.models import Count
+from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -238,6 +239,17 @@ class QuestionViewSet(_DraftScopedMixin, TenantScopedMixin, viewsets.ModelViewSe
                 question.order = index
         Question.objects.bulk_update(questions.values(), ["order"])
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["post"], url_path="from-bank")
+    def from_bank(self, request, survey_pk=None):
+        from apps.question_bank.models import BankQuestion
+        from apps.surveys.services import create_question_from_bank
+
+        version = self._draft_version()
+        section = get_object_or_404(Section, pk=request.data.get("section_id"), version=version)
+        bank_question = get_object_or_404(BankQuestion, pk=request.data.get("bank_question_id"))
+        question = create_question_from_bank(section, bank_question)
+        return Response(QuestionSerializer(question).data, status=status.HTTP_201_CREATED)
 
 
 class ChoiceListViewSet(_DraftScopedMixin, TenantScopedMixin, viewsets.ModelViewSet):
