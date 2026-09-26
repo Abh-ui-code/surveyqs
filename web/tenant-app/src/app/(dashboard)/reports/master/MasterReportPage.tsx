@@ -1,6 +1,7 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,9 +15,12 @@ function MasterReportContent() {
 
   return (
     <div>
+      <Link href="/reports" className="mb-3 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+        <ArrowLeft className="h-3.5 w-3.5" /> All reports
+      </Link>
       <PageHeader
-        title="Master report"
-        description="Every response, from every agent, across every survey -- with respondent and demographic details included. No filters; use the Filtered report to narrow it down."
+        title="All Responses Report"
+        description="Every response, from every agent, across every survey -- with respondent and demographic details included. No filters; use the Custom Response Report to narrow it down."
       />
 
       <Card>

@@ -1,6 +1,7 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,8 +42,11 @@ function FilteredReportContent() {
 
   return (
     <div>
+      <Link href="/reports" className="mb-3 inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+        <ArrowLeft className="h-3.5 w-3.5" /> All reports
+      </Link>
       <PageHeader
-        title="Filtered report"
+        title="Custom Response Report"
         description="Download a report scoped to a specific agent, survey, or date range -- pick any combination, or leave a filter on 'All' to skip it."
       />
 

@@ -2,7 +2,6 @@ import {
   BarChart3,
   BookOpen,
   FileSpreadsheet,
-  Filter,
   LayoutDashboard,
   ListChecks,
   ShieldCheck,
@@ -40,10 +39,9 @@ function leaf(href: string, label: string, icon: LucideIcon, module: string): Na
  * once, in AppShell -- the nav array itself is a plain data structure.
  *
  * Scoped to what has been built: dashboard, surveys, respondents, responses,
- * standalone Question bank and Demographic questions entries, a Reports
- * group (Master report, Filtered report -- both .xlsx exports, gated on
- * the "export" action so a view-only "reports" role sees the nav entries
- * but the page itself explains they lack access), and an Administration
+ * standalone Question bank and Demographic questions entries, a single
+ * Reports link (its own landing page picks Master report vs. Filtered
+ * report -- not an expandable sidebar submenu), and an Administration
  * group (users, roles & permissions, workspace settings). Assignments and
  * audit have working backend endpoints (see backend/apps/*) but no web
  * screens yet -- adding their nav entries before the pages exist would
@@ -56,16 +54,7 @@ export const NAV: NavEntry[] = [
   leaf("/responses", "Responses", BarChart3, "responses"),
   leaf("/admin/question-bank", "Question bank", BookOpen, "settings"),
   leaf("/admin/demographic-questions", "Demographic questions", UserCog, "settings"),
-  {
-    kind: "group",
-    id: "reports",
-    label: "Reports",
-    icon: FileSpreadsheet,
-    items: [
-      leaf("/reports/master", "Master report", FileSpreadsheet, "reports"),
-      leaf("/reports/filtered", "Filtered report", Filter, "reports"),
-    ],
-  },
+  leaf("/reports", "Reports", FileSpreadsheet, "reports"),
   {
     kind: "group",
     id: "administration",

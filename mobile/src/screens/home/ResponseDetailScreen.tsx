@@ -116,33 +116,6 @@ export default function ResponseDetailScreen({ route }: Props) {
         </View>
       ))}
 
-      <Card>
-        <SectionLabel>Answers</SectionLabel>
-        {answers.length === 0 ? (
-          <Text style={{ color: colors.textMuted, fontSize: 13 }}>No answers recorded.</Text>
-        ) : (
-          answers.map(([code, value], i) => {
-            const q = questionsByCode.get(code);
-            return (
-              <View key={code} style={{ paddingVertical: 9, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: colors.border }}>
-                <Text
-                  style={
-                    q
-                      ? { color: colors.textMuted, fontSize: 12.5 }
-                      : { color: colors.textMuted, fontSize: 11, fontFamily: "monospace" }
-                  }
-                >
-                  {q?.label.en ?? Object.values(q?.label ?? {})[0] ?? code}
-                </Text>
-                <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
-                  {formatAnswer(q, value, choiceLists)}
-                </Text>
-              </View>
-            );
-          })
-        )}
-      </Card>
-
       {respondentDetail.data && (
         <Card>
           <SectionLabel>Demographic details</SectionLabel>
@@ -185,6 +158,33 @@ export default function ResponseDetailScreen({ route }: Props) {
           })}
         </Card>
       )}
+
+      <Card>
+        <SectionLabel>Answers</SectionLabel>
+        {answers.length === 0 ? (
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>No answers recorded.</Text>
+        ) : (
+          answers.map(([code, value], i) => {
+            const q = questionsByCode.get(code);
+            return (
+              <View key={code} style={{ paddingVertical: 9, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: colors.border }}>
+                <Text
+                  style={
+                    q
+                      ? { color: colors.textMuted, fontSize: 12.5 }
+                      : { color: colors.textMuted, fontSize: 11, fontFamily: "monospace" }
+                  }
+                >
+                  {q?.label.en ?? Object.values(q?.label ?? {})[0] ?? code}
+                </Text>
+                <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
+                  {formatAnswer(q, value, choiceLists)}
+                </Text>
+              </View>
+            );
+          })
+        )}
+      </Card>
 
       <Card style={{ gap: 8 }}>
         <SectionLabel>Details</SectionLabel>

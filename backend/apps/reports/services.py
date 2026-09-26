@@ -31,15 +31,19 @@ from datetime import datetime
 from io import BytesIO
 
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from apps.formlogic.relevance import iter_questions
 from apps.responses.models import SurveyResponse
 from apps.responses.scoping import scope_responses
 
-FIXED_HEADERS = [
-    "Response Code", "Survey", "Full Name", "Phone", "Email",
-    "Agent Name", "Agent Email", "Submitted At", "Duration (seconds)", "Collected Offline",
-]
+# Split around the demographic columns, which sit right after the
+# respondent's own contact details (Email) and before agent/submission
+# info -- everything about "who was interviewed" grouped together, ahead
+# of everything about "who collected it and when".
+RESPONDENT_HEADERS = ["Response Code", "Survey", "Full Name", "Phone", "Email"]
+AGENT_HEADERS = ["Agent Name", "Agent Email", "Submitted At", "Duration (seconds)"]
 
 _EXCLUDED_TYPES = {"note", "repeat", "matrix_single"}
 _UNSAFE_LEADING_CHARS = ("=", "+", "-", "@", "\t", "\r")
@@ -104,11 +108,12 @@ def _resolve_agents(collected_by_ids):
 
 def _build_columns_and_rows(responses: list[SurveyResponse]):
     """
-    Returns (dynamic_headers, rows) where each row is
-    (fixed_values, {column_key: value}) -- the caller materializes the
-    final flat row once `dynamic_headers` (and the key->index map) is
-    complete, since a response processed early cannot know about columns
-    a later response will introduce.
+    Returns (demographic_headers, survey_headers, rows), each row already
+    laid out in the final column order:
+    RESPONDENT_HEADERS + demographic_headers + AGENT_HEADERS + survey_headers.
+    Demographic and survey-question columns are tracked as two separate
+    unions (each in first-seen order) so a later response can only add new
+    columns within its own group, never move ones already placed.
     """
     from apps.respondents.models import Respondent
 
@@ -116,8 +121,10 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
     respondents_by_id = {str(r.id): r for r in Respondent.objects.filter(id__in=respondent_ids)}
     agents_by_id = _resolve_agents({r.collected_by_id for r in responses})
 
-    column_index: dict[tuple, int] = {}
-    dynamic_headers: list[str] = []
+    demo_index: dict[str, int] = {}
+    demo_headers: list[str] = []
+    survey_index: dict[tuple, int] = {}
+    survey_headers: list[str] = []
     schema_cache: dict[str, tuple[dict, dict]] = {}  # version id -> (schema_json, choice_lists by name)
     prepared_rows = []
 
@@ -131,18 +138,18 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
 
         respondent = respondents_by_id.get(str(r.respondent_id)) if r.respondent_id else None
         agent = agents_by_id.get(str(r.collected_by_id))
-        row_values: dict[tuple, object] = {}
+        demo_values: dict[str, object] = {}
+        survey_values: dict[tuple, object] = {}
 
         if respondent:
             demographic_questions = {q["code"]: q for q in schema.get("demographic_questions", [])}
             for code, value in (respondent.custom_fields or {}).items():
                 question = demographic_questions.get(code)
-                key = ("__demo__", code)
-                if key not in column_index:
-                    column_index[key] = len(dynamic_headers)
-                    dynamic_headers.append(_label(question.get("label") if question else None, code))
+                if code not in demo_index:
+                    demo_index[code] = len(demo_headers)
+                    demo_headers.append(_label(question.get("label") if question else None, code))
                 formatted = _format_answer(question, value, choice_lists) if question else value
-                row_values[key] = _defang(formatted)
+                demo_values[code] = _defang(formatted)
 
         answers = r.answers or {}
         for _section, question in iter_questions(schema):
@@ -152,44 +159,67 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
             if code not in answers:
                 continue
             key = (str(r.survey_id), code)
-            if key not in column_index:
-                column_index[key] = len(dynamic_headers)
-                dynamic_headers.append(f"{r.survey.title} — {_label(question.get('label'), code)}")
-            row_values[key] = _defang(_format_answer(question, answers[code], choice_lists))
+            if key not in survey_index:
+                survey_index[key] = len(survey_headers)
+                survey_headers.append(f"{r.survey.title} — {_label(question.get('label'), code)}")
+            survey_values[key] = _defang(_format_answer(question, answers[code], choice_lists))
 
-        fixed = [
+        respondent_part = [
             r.response_code,
             r.survey.title,
             respondent.full_name if respondent else "",
             respondent.phone if respondent else "",
             respondent.email if respondent else "",
+        ]
+        agent_part = [
             agent.full_name if agent else "",
             agent.email if agent else "",
             r.submitted_at.replace(tzinfo=None) if r.submitted_at else None,
             r.duration_seconds,
-            "Yes" if r.was_offline else "No",
         ]
-        prepared_rows.append((fixed, row_values))
+        prepared_rows.append((respondent_part, demo_values, agent_part, survey_values))
 
     rows = []
-    for fixed, row_values in prepared_rows:
-        dynamic = [None] * len(dynamic_headers)
-        for key, value in row_values.items():
-            dynamic[column_index[key]] = value
-        rows.append(fixed + dynamic)
+    for respondent_part, demo_values, agent_part, survey_values in prepared_rows:
+        demo_row = [None] * len(demo_headers)
+        for code, value in demo_values.items():
+            demo_row[demo_index[code]] = value
+        survey_row = [None] * len(survey_headers)
+        for key, value in survey_values.items():
+            survey_row[survey_index[key]] = value
+        rows.append(respondent_part + demo_row + agent_part + survey_row)
 
-    return dynamic_headers, rows
+    return demo_headers, survey_headers, rows
 
 
-def _write_workbook(dynamic_headers: list[str], rows: list[list]) -> BytesIO:
+def _write_workbook(demo_headers: list[str], survey_headers: list[str], rows: list[list]) -> BytesIO:
     wb = Workbook()
     ws = wb.active
     ws.title = "Responses"
-    headers = FIXED_HEADERS + dynamic_headers
+    headers = RESPONDENT_HEADERS + demo_headers + AGENT_HEADERS + survey_headers
     ws.append(headers)
     for row in rows:
         ws.append(row)
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(fill_type="solid", start_color="2E7D32", end_color="2E7D32")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    ws.row_dimensions[1].height = 28
+
+    # Fixed, readable widths rather than Excel's default cramped auto-size --
+    # sized off the header and a sample of each column's actual content,
+    # capped so one very long free-text answer can't blow out the sheet.
+    for col_index, header in enumerate(headers, start=1):
+        sample_lengths = [len(str(row[col_index - 1])) for row in rows[:200] if row[col_index - 1] is not None]
+        width = max(len(header), max(sample_lengths, default=0)) + 4
+        ws.column_dimensions[get_column_letter(col_index)].width = min(max(width, 14), 45)
+
     ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
 
     buffer = BytesIO()
     wb.save(buffer)
@@ -215,5 +245,5 @@ def export_responses(user, *, survey_id=None, collected_by_id=None, date_from=No
     responses = list(
         qs.select_related("survey", "survey_version", "respondent").order_by("survey_id", "submitted_at")
     )
-    dynamic_headers, rows = _build_columns_and_rows(responses)
-    return _write_workbook(dynamic_headers, rows)
+    demo_headers, survey_headers, rows = _build_columns_and_rows(responses)
+    return _write_workbook(demo_headers, survey_headers, rows)

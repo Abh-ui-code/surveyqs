@@ -87,6 +87,39 @@ function DetailContent({ responseId }: { responseId: string }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {respondent.data && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Demographic details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="border-b border-line pb-3">
+                  <p className="text-xs text-ink-faint">Full name</p>
+                  <p className="mt-0.5 text-sm text-ink">{respondent.data.full_name || "—"}</p>
+                </div>
+                <div className="border-b border-line pb-3">
+                  <p className="text-xs text-ink-faint">Phone</p>
+                  <p className="mt-0.5 text-sm text-ink">{respondent.data.phone || "—"}</p>
+                </div>
+                <div className="border-b border-line pb-3 last:border-0 last:pb-0">
+                  <p className="text-xs text-ink-faint">Email</p>
+                  <p className="mt-0.5 text-sm text-ink">{respondent.data.email || "—"}</p>
+                </div>
+                {Object.entries(respondent.data.custom_fields).map(([code, value]) => {
+                  const q = schema.data?.demographic_questions.find((dq) => dq.code === code);
+                  return (
+                    <div key={code} className="border-b border-line pb-3 last:border-0 last:pb-0">
+                      <p className="text-xs text-ink-faint">{q?.label.en ?? code}</p>
+                      <p className="mt-0.5 text-sm text-ink">
+                        {q ? displayAnswer(q, value, choiceLabel) : String(value)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Answers</CardTitle>
@@ -161,39 +194,6 @@ function DetailContent({ responseId }: { responseId: string }) {
               )}
             </CardContent>
           </Card>
-
-          {respondent.data && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Demographic details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="border-b border-line pb-3">
-                  <p className="text-xs text-ink-faint">Full name</p>
-                  <p className="mt-0.5 text-sm text-ink">{respondent.data.full_name || "—"}</p>
-                </div>
-                <div className="border-b border-line pb-3">
-                  <p className="text-xs text-ink-faint">Phone</p>
-                  <p className="mt-0.5 text-sm text-ink">{respondent.data.phone || "—"}</p>
-                </div>
-                <div className="border-b border-line pb-3 last:border-0 last:pb-0">
-                  <p className="text-xs text-ink-faint">Email</p>
-                  <p className="mt-0.5 text-sm text-ink">{respondent.data.email || "—"}</p>
-                </div>
-                {Object.entries(respondent.data.custom_fields).map(([code, value]) => {
-                  const q = schema.data?.demographic_questions.find((dq) => dq.code === code);
-                  return (
-                    <div key={code} className="border-b border-line pb-3 last:border-0 last:pb-0">
-                      <p className="text-xs text-ink-faint">{q?.label.en ?? code}</p>
-                      <p className="mt-0.5 text-sm text-ink">
-                        {q ? displayAnswer(q, value, choiceLabel) : String(value)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
         </div>
 
         <div className="space-y-4">
