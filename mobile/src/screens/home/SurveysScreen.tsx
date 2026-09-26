@@ -40,15 +40,18 @@ export default function SurveysScreen() {
     (nav.navigate as (name: string, params: object | undefined) => void)(route.name, route.params);
   }
 
-  // Tapping "Start" goes straight into the interview — no intro screen in
-  // between. No draft is created yet, deliberately: if the agent backs out
-  // of Respondent capture without entering anything, there must be nothing
-  // left behind to show up as a phantom "in progress" card. A draft is
-  // only created once they actually enter a respondent and tap Continue.
+  // Tapping "Start" goes to Consent first when the survey requires it
+  // (ConsentScreen itself skips straight past to Respondent capture when
+  // it doesn't, once the form package confirms that — this screen doesn't
+  // have that package loaded yet, so it can't decide that here). No draft
+  // is created yet either way, deliberately: if the agent backs out
+  // without entering anything, there must be nothing left behind to show
+  // up as a phantom "in progress" card. A draft is only created once they
+  // agree to consent (when required) or, for a survey with none, once
+  // they enter a respondent and tap Continue.
   function start(assignment: SyncAssignment) {
     if (!assignment.version) return;
-    nav.navigate("RespondentCapture", {
-      mode: "new",
+    nav.navigate("ConsentCapture", {
       assignmentId: assignment.id,
       surveyId: assignment.survey.id,
       surveyTitle: assignment.survey.title,

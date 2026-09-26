@@ -7,7 +7,15 @@ from rest_framework.response import Response
 
 from apps.core.viewset_mixins import TenantScopedMixin
 from apps.rbac.permissions import HasPermission
-from apps.surveys.models import Choice, ChoiceList, Question, Section, Survey, SurveyCategory
+from apps.surveys.models import (
+    Choice,
+    ChoiceList,
+    Question,
+    Section,
+    Survey,
+    SurveyCategory,
+    SurveyDemographicField,
+)
 from apps.surveys.serializers import (
     ChoiceListSerializer,
     PublishSerializer,
@@ -15,11 +23,13 @@ from apps.surveys.serializers import (
     SectionSerializer,
     SurveyCategorySerializer,
     SurveyCreateSerializer,
+    SurveyDemographicFieldSerializer,
     SurveyDetailSerializer,
     SurveyListSerializer,
     SurveyVersionSerializer,
     SurveyVersionSummarySerializer,
 )
+from apps.surveys.question_order import sort_questions_by_branch_adjacency
 from apps.surveys.services import SurveyValidationError, open_draft, publish_survey, transition_survey
 from apps.surveys.validators import validate_survey_structure
 
@@ -125,6 +135,19 @@ class SurveyViewSet(TenantScopedMixin, viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=["post"], url_path="consent-notice")
+    def consent_notice(self, request, pk=None):
+        from apps.surveys.services import set_survey_consent
+
+        survey = self.get_object()
+        survey = set_survey_consent(
+            survey,
+            required=bool(request.data.get("required")),
+            text=request.data.get("text", ""),
+            language=request.data.get("language", "en"),
+        )
+        return Response(SurveyDetailSerializer(survey).data)
+
     def _transition(self, request, pk, new_status):
         survey = self.get_object()
         try:
@@ -225,19 +248,43 @@ class QuestionViewSet(_DraftScopedMixin, TenantScopedMixin, viewsets.ModelViewSe
         section = serializer.validated_data["section"]
         next_order = Question.objects.filter(section=section).count()
         serializer.save(order=serializer.validated_data.get("order", next_order))
+        self._renormalize_section(section)
+
+    def perform_update(self, serializer):
+        question = serializer.save()
+        # Editing a question can add or change its `relevant` condition,
+        # which can make it a branch of a question it isn't currently
+        # adjacent to (or stop being one) -- renormalize either way rather
+        # than only fixing this up on drag-reorder.
+        self._renormalize_section(question.section)
+
+    @staticmethod
+    def _renormalize_section(section):
+        existing = list(Question.objects.filter(section=section).order_by("order"))
+        normalized = sort_questions_by_branch_adjacency(existing)
+        if normalized != existing:
+            for index, question in enumerate(normalized):
+                question.order = index
+            Question.objects.bulk_update(normalized, ["order"])
 
     @action(detail=False, methods=["post"], url_path="reorder")
     def reorder(self, request, survey_pk=None):
+        """
+        `question_ids` is the caller's full requested order for one
+        section. Applied as given, then renormalized so a branch question
+        always ends up directly after its parent -- a drag that would have
+        split them apart self-corrects rather than persisting the split.
+        """
         version = self._draft_version()
-        question_ids = request.data.get("question_ids", [])
-        questions = {
+        question_ids = [str(qid) for qid in request.data.get("question_ids", [])]
+        questions_by_id = {
             str(q.id): q for q in Question.objects.filter(section__version=version, id__in=question_ids)
         }
-        for index, question_id in enumerate(question_ids):
-            question = questions.get(str(question_id))
-            if question:
-                question.order = index
-        Question.objects.bulk_update(questions.values(), ["order"])
+        requested_order = [questions_by_id[qid] for qid in question_ids if qid in questions_by_id]
+        normalized = sort_questions_by_branch_adjacency(requested_order)
+        for index, question in enumerate(normalized):
+            question.order = index
+        Question.objects.bulk_update(normalized, ["order"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], url_path="from-bank")
@@ -250,6 +297,45 @@ class QuestionViewSet(_DraftScopedMixin, TenantScopedMixin, viewsets.ModelViewSe
         bank_question = get_object_or_404(BankQuestion, pk=request.data.get("bank_question_id"))
         question = create_question_from_bank(section, bank_question)
         return Response(QuestionSerializer(question).data, status=status.HTTP_201_CREATED)
+
+
+class SurveyDemographicFieldViewSet(_DraftScopedMixin, TenantScopedMixin, viewsets.ModelViewSet):
+    module_code = "surveys"
+    REQUIRED_ACTIONS = {"GET": "view", "POST": "edit", "PATCH": "edit", "PUT": "edit", "DELETE": "edit"}
+    permission_classes = [HasPermission]
+    serializer_class = SurveyDemographicFieldSerializer
+
+    def get_queryset(self):
+        return SurveyDemographicField.objects.filter(version=self._draft_version()).order_by("order")
+
+    def perform_create(self, serializer):
+        version = self._draft_version()
+        next_order = SurveyDemographicField.objects.filter(version=version).count()
+        serializer.save(version=version, order=serializer.validated_data.get("order", next_order))
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request, survey_pk=None):
+        version = self._draft_version()
+        field_ids = [str(fid) for fid in request.data.get("field_ids", [])]
+        fields = {
+            str(f.id): f for f in SurveyDemographicField.objects.filter(version=version, id__in=field_ids)
+        }
+        for index, field_id in enumerate(field_ids):
+            field = fields.get(field_id)
+            if field:
+                field.order = index
+        SurveyDemographicField.objects.bulk_update(fields.values(), ["order"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["post"], url_path="from-bank")
+    def from_bank(self, request, survey_pk=None):
+        from apps.respondents.models import DemographicQuestion
+        from apps.surveys.services import create_demographic_field_from_bank
+
+        version = self._draft_version()
+        demographic_question = get_object_or_404(DemographicQuestion, pk=request.data.get("demographic_question_id"))
+        field = create_demographic_field_from_bank(version, demographic_question)
+        return Response(SurveyDemographicFieldSerializer(field).data, status=status.HTTP_201_CREATED)
 
 
 class ChoiceListViewSet(_DraftScopedMixin, TenantScopedMixin, viewsets.ModelViewSet):

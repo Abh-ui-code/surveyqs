@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.responses.models import ResponseAttachment, ResponseFlag, ResponseReview, SurveyResponse
+from apps.responses.models import ResponseAttachment, ResponseFlag, SurveyResponse
 
 
 class ResponseListSerializer(serializers.ModelSerializer):
@@ -41,12 +41,6 @@ class ResponseFlagSerializer(serializers.ModelSerializer):
         fields = ["id", "code", "severity", "message", "triggering_values", "created_at"]
 
 
-class ResponseReviewSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ResponseReview
-        fields = ["id", "action", "reviewer_id", "reason_code", "notes", "created_at"]
-
-
 class ResponseDetailSerializer(ResponseListSerializer):
     # Lets the client fetch this exact version's schema (GET
     # /surveys/{id}/versions/{version_number}/) to render `answers` grouped
@@ -55,15 +49,9 @@ class ResponseDetailSerializer(ResponseListSerializer):
     version_number = serializers.IntegerField(source="survey_version.version_number", read_only=True)
     attachments = ResponseAttachmentSerializer(many=True, read_only=True)
     flags = ResponseFlagSerializer(many=True, read_only=True)
-    reviews = ResponseReviewSerializer(many=True, read_only=True)
 
     class Meta(ResponseListSerializer.Meta):
         fields = ResponseListSerializer.Meta.fields + [
             "version_number", "answers", "started_at", "gps_lat", "gps_lng", "gps_accuracy_m",
-            "device_id", "app_version", "is_edited", "attachments", "flags", "reviews",
+            "device_id", "app_version", "is_edited", "attachments", "flags",
         ]
-
-
-class RejectResponseSerializer(serializers.Serializer):
-    reason_code = serializers.CharField()
-    notes = serializers.CharField(required=False, allow_blank=True, default="")

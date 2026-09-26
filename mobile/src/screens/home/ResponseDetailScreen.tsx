@@ -1,32 +1,90 @@
+import { useMemo } from "react";
 import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { ChoiceList, Question, ResponseListItem } from "@surveyqs/shared";
 
 import { Card, SectionLabel, StatusChip, type ChipStatus } from "@/components/primitives";
 import { useTheme } from "@/theme/ThemeProvider";
-import { useResponseDetail } from "@/hooks/use-responses";
+import { useFormPackage } from "@/hooks/use-assignments";
+import { useRespondentDetail, useResponseDetail } from "@/hooks/use-responses";
 import type { RootStackParamList } from "@/navigation/types";
-import type { ResponseListItem } from "@surveyqs/shared";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ResponseDetail">;
 
-const STATUS_CHIP: Record<ResponseListItem["status"], { status: ChipStatus; label: string }> = {
-  submitted: { status: "neutral", label: "Submitted" },
-  under_review: { status: "neutral", label: "Awaiting review" },
-  approved: { status: "ok", label: "Approved" },
-  rejected: { status: "bad", label: "Rejected" },
+function choiceLabel(choiceLists: ChoiceList[], listName: string | undefined, value: string): string {
+  const list = choiceLists.find((l) => l.name === listName);
+  return list?.choices.find((c) => c.value === value)?.label.en ?? value;
+}
+
+/** Mirrors the web app's displayAnswer (web/tenant-app/src/lib/form-schema.ts)
+ * -- a choice's label rather than its stored value, "Yes"/"No" rather than
+ * true/false, etc. `question` is undefined when the code isn't recognized
+ * (an older answer from before a question was removed), in which case the
+ * raw stored value is shown as-is. */
+function formatAnswer(question: Question | undefined, value: unknown, choiceLists: ChoiceList[]): string {
+  if (value === undefined || value === null || value === "") return "—";
+  if (!question) return Array.isArray(value) ? value.join(", ") : String(value);
+  const listName = question.config?.choice_list as string | undefined;
+  switch (question.type) {
+    case "yes_no":
+      return value ? "Yes" : "No";
+    case "select_one":
+      return choiceLabel(choiceLists, listName, value as string);
+    case "select_multiple":
+      return (value as string[]).map((v) => choiceLabel(choiceLists, listName, v)).join(", ");
+    case "geopoint": {
+      const g = value as { lat: number; lng: number };
+      return `${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`;
+    }
+    default:
+      return Array.isArray(value) ? value.join(", ") : String(value);
+  }
+}
+
+const STATUS_CHIP: Record<string, { status: ChipStatus; label: string }> = {
+  submitted: { status: "ok", label: "Submitted" },
 };
+
+/** See the identical helper in home/MyWorkScreen.tsx -- a response's
+ * `status` is only ever "submitted" going forward, but older rows can
+ * still carry a status from a since-removed review workflow
+ * (under_review/approved/rejected). Falls back to a neutral, humanized
+ * chip instead of crashing on that legacy data. */
+function chipFor(status: ResponseListItem["status"]): { status: ChipStatus; label: string } {
+  return STATUS_CHIP[status] ?? { status: "neutral", label: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ") };
+}
 
 /**
  * Same information the web app's response detail page shows (answers,
- * review history, submission details, attachments) — see
- * web/tenant-app/.../responses/[id]/ResponseDetailPage.tsx. Approve/
- * reject actions are left out: those are a supervisor's review of
- * someone else's work, not something an agent does on their own
- * submission here.
+ * submission details, attachments) — see
+ * web/tenant-app/.../responses/[id]/ResponseDetailPage.tsx. A submission
+ * is final the moment it lands, so there's no review state or history to
+ * show here.
  */
 export default function ResponseDetailScreen({ route }: Props) {
   const { colors } = useTheme();
   const detail = useResponseDetail(route.params.responseId);
+  // The published version's sections/questions (for real labels instead of
+  // raw codes) and its selected demographic questions -- the same frozen
+  // package FormSectionScreen renders the survey's own questions from.
+  const pkg = useFormPackage(detail.data?.survey_version);
+  const respondentDetail = useRespondentDetail(detail.data?.respondent ?? undefined);
+
+  const questionsByCode = useMemo(() => {
+    const map = new Map<string, Question>();
+    for (const section of pkg.data?.sections ?? []) {
+      for (const q of section.questions) map.set(q.code, q);
+    }
+    return map;
+  }, [pkg.data]);
+
+  const demographicByCode = useMemo(() => {
+    const map = new Map<string, Question>();
+    for (const q of pkg.data?.demographic_questions ?? []) map.set(q.code, q);
+    return map;
+  }, [pkg.data]);
+
+  const choiceLists = pkg.data?.choice_lists ?? [];
 
   if (detail.isPending || !detail.data) {
     return (
@@ -37,8 +95,9 @@ export default function ResponseDetailScreen({ route }: Props) {
   }
 
   const r = detail.data;
-  const chip = STATUS_CHIP[r.status];
+  const chip = chipFor(r.status);
   const answers = Object.entries(r.answers);
+  const demographicAnswers = Object.entries(respondentDetail.data?.custom_fields ?? {});
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: 16, gap: 12 }}>
@@ -62,29 +121,68 @@ export default function ResponseDetailScreen({ route }: Props) {
         {answers.length === 0 ? (
           <Text style={{ color: colors.textMuted, fontSize: 13 }}>No answers recorded.</Text>
         ) : (
-          answers.map(([code, value], i) => (
-            <View key={code} style={{ paddingVertical: 9, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: colors.border }}>
-              <Text style={{ color: colors.textFaint, fontSize: 10.5, fontFamily: "monospace" }}>{code}</Text>
-              <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2 }}>
-                {Array.isArray(value) ? value.join(", ") : String(value)}
-              </Text>
-            </View>
-          ))
+          answers.map(([code, value], i) => {
+            const q = questionsByCode.get(code);
+            return (
+              <View key={code} style={{ paddingVertical: 9, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: colors.border }}>
+                <Text
+                  style={
+                    q
+                      ? { color: colors.textMuted, fontSize: 12.5 }
+                      : { color: colors.textMuted, fontSize: 11, fontFamily: "monospace" }
+                  }
+                >
+                  {q?.label.en ?? Object.values(q?.label ?? {})[0] ?? code}
+                </Text>
+                <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
+                  {formatAnswer(q, value, choiceLists)}
+                </Text>
+              </View>
+            );
+          })
         )}
       </Card>
 
-      {r.reviews.length > 0 && (
+      {respondentDetail.data && (
         <Card>
-          <SectionLabel>History</SectionLabel>
-          {r.reviews.map((rev, i) => (
-            <View key={rev.id} style={{ paddingVertical: 8, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: colors.border }}>
-              <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600", textTransform: "capitalize" }}>
-                {rev.action}
-                {rev.notes ? <Text style={{ color: colors.textMuted, fontWeight: "400" }}> — {rev.notes}</Text> : null}
-              </Text>
-              <Text style={{ color: colors.textFaint, fontSize: 11, marginTop: 2 }}>{new Date(rev.created_at).toLocaleString()}</Text>
-            </View>
-          ))}
+          <SectionLabel>Demographic details</SectionLabel>
+          <View style={{ paddingVertical: 9 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 12.5 }}>Full name</Text>
+            <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
+              {respondentDetail.data.full_name || "—"}
+            </Text>
+          </View>
+          <View style={{ paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Text style={{ color: colors.textMuted, fontSize: 12.5 }}>Phone</Text>
+            <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
+              {respondentDetail.data.phone || "—"}
+            </Text>
+          </View>
+          <View style={{ paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Text style={{ color: colors.textMuted, fontSize: 12.5 }}>Email</Text>
+            <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
+              {respondentDetail.data.email || "—"}
+            </Text>
+          </View>
+          {demographicAnswers.map(([code, value]) => {
+            const q = demographicByCode.get(code);
+            return (
+              <View key={code} style={{ paddingVertical: 9, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Text
+                  style={
+                    q
+                      ? { color: colors.textMuted, fontSize: 12.5 }
+                      : { color: colors.textMuted, fontSize: 11, fontFamily: "monospace" }
+                  }
+                >
+                  {q?.label.en ?? Object.values(q?.label ?? {})[0] ?? code}
+                </Text>
+                <Text style={{ color: colors.text, fontSize: 13.5, marginTop: 2, fontWeight: "600" }}>
+                  {formatAnswer(q, value, choiceLists)}
+                </Text>
+              </View>
+            );
+          })}
         </Card>
       )}
 

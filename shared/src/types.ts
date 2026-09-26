@@ -190,7 +190,6 @@ export interface FormPackageSettings {
   require_gps: boolean;
   gps_accuracy_threshold_m: number;
   allow_draft: boolean;
-  auto_approve: boolean;
   show_progress: boolean;
   allow_back_navigation: boolean;
   randomize_sections: boolean;
@@ -213,6 +212,24 @@ export interface FormPackage {
   choice_lists: ChoiceList[];
   sections: Section[];
   metadata_questions: Array<{ code: string; type: string; source: string }>;
+  /** The Respondent step's admin-selected fields for this survey (see
+   * Admin -> Demographic questions on the web app), frozen at publish time
+   * like sections/questions are. Rendered before the survey's own
+   * questions; answers are stored on Respondent.custom_fields rather than
+   * a response's answers. */
+  demographic_questions: Question[];
+  /** Embedded (not just referenced by `settings.consent_notice_id`) so the
+   * consent screen has the notice text cached offline before the
+   * interview starts -- null when `settings.consent_required` is false, or
+   * when a notice id is set but nothing matches it server-side. */
+  consent_notice: ConsentNotice | null;
+}
+
+export interface ConsentNotice {
+  id: string;
+  version: number;
+  language: string;
+  text: string;
 }
 
 // ---------------------------------------------------------------------
@@ -270,10 +287,12 @@ export interface SubmissionPayload {
 // ---------------------------------------------------------------------
 // Responses — GET /api/responses/ (read-only; scoped server-side to the
 // signed-in agent's own responses). Field names match
-// apps/responses/serializers.py exactly.
+// apps/responses/serializers.py exactly. A submission is final the moment
+// it lands -- there is no admin approval/rejection step, so "submitted"
+// is the only status.
 // ---------------------------------------------------------------------
 
-export type ResponseStatus = "submitted" | "under_review" | "approved" | "rejected";
+export type ResponseStatus = "submitted";
 
 export interface ResponseListItem {
   id: string;
@@ -290,15 +309,6 @@ export interface ResponseListItem {
   duration_seconds: number;
   flag_count: number;
   was_offline: boolean;
-}
-
-export interface ResponseReview {
-  id: string;
-  action: "approve" | "reject" | "reopen";
-  reviewer_id: string;
-  reason_code: string;
-  notes: string;
-  created_at: string;
 }
 
 export interface ResponseAttachmentInfo {
@@ -330,11 +340,5 @@ export interface ResponseDetail extends ResponseListItem {
   app_version: string;
   is_edited: boolean;
   attachments: ResponseAttachmentInfo[];
-  reviews: ResponseReview[];
   flags: ResponseFlag[];
-}
-
-/** The most recent reject review, if any — My Work shows its reason. */
-export function latestRejection(detail: Pick<ResponseDetail, "reviews">): ResponseReview | null {
-  return detail.reviews.find((r) => r.action === "reject") ?? null;
 }

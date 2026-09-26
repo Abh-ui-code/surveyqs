@@ -1,32 +1,28 @@
 "use client";
 
-import { ArrowLeft, Check, Flag, MapPin, X } from "lucide-react";
+import { ArrowLeft, Flag, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ResponseStatusBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/permission-gate";
-import { canAccess, useMyPermissions } from "@/hooks/use-permissions";
-import { apiErrorMessage } from "@/lib/api-client/client";
-import { branchParentCode, displayAnswer, type ChoiceListDef } from "@/lib/form-schema";
+import { branchParentCode, displayAnswer, sortSectionQuestions, type ChoiceListDef } from "@/lib/form-schema";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useRespondent } from "../../respondents/_hooks/use-respondents";
 import { useVersionSchema } from "../../surveys/[id]/collect/_hooks/use-collect";
-import { RejectDialog } from "./_components/reject-dialog";
-import { useApproveResponse, useResponse } from "../_hooks/use-responses";
+import { useResponse } from "../_hooks/use-responses";
 
 function DetailContent({ responseId }: { responseId: string }) {
   const response = useResponse(responseId);
   const schema = useVersionSchema(response.data?.survey ?? "", response.data?.version_number);
-  const approve = useApproveResponse(responseId);
-  const perms = useMyPermissions();
-  const canReview = canAccess(perms.data, "responses", "approve");
+  // `/responses/{id}/` only carries the respondent's id + display name, not
+  // their demographic answers -- fetched separately for the section below.
+  const respondent = useRespondent(response.data?.respondent ?? "");
 
   const choiceLists = useMemo(() => {
     const map: Record<string, ChoiceListDef> = {};
@@ -76,29 +72,6 @@ function DetailContent({ responseId }: { responseId: string }) {
             {r.survey_title} · {r.respondent_name ?? "Anonymous respondent"}
           </p>
         </div>
-        {canReview && r.status !== "approved" && r.status !== "rejected" && (
-          <div className="flex gap-2">
-            <RejectDialog
-              responseId={responseId}
-              trigger={
-                <Button variant="secondary">
-                  <X className="h-4 w-4" /> Reject
-                </Button>
-              }
-            />
-            <Button
-              onClick={() =>
-                approve.mutate(undefined, {
-                  onSuccess: () => toast.success("Response approved"),
-                  onError: (err) => toast.error("Couldn't approve", { description: apiErrorMessage(err) }),
-                })
-              }
-              loading={approve.isPending}
-            >
-              <Check className="h-4 w-4" /> Approve
-            </Button>
-          </div>
-        )}
       </div>
 
       {r.flags.length > 0 && (
@@ -133,7 +106,7 @@ function DetailContent({ responseId }: { responseId: string }) {
                           {section.title.en ?? section.code}
                         </h4>
                         <div className="space-y-3">
-                          {section.questions
+                          {sortSectionQuestions(section)
                             .filter((q) => answerCodes.has(q.code))
                             .map((q) => {
                               const isBranch = branchParentCode(section, q) !== null;
@@ -189,19 +162,35 @@ function DetailContent({ responseId }: { responseId: string }) {
             </CardContent>
           </Card>
 
-          {r.reviews.length > 0 && (
+          {respondent.data && (
             <Card>
               <CardHeader>
-                <CardTitle>History</CardTitle>
+                <CardTitle>Demographic details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {r.reviews.map((rev) => (
-                  <div key={rev.id} className="text-sm">
-                    <span className="font-medium capitalize text-ink">{rev.action}</span>
-                    {rev.notes && <span className="text-ink-muted"> — {rev.notes}</span>}
-                    <div className="text-xs text-ink-faint">{formatDateTime(rev.created_at)}</div>
-                  </div>
-                ))}
+                <div className="border-b border-line pb-3">
+                  <p className="text-xs text-ink-faint">Full name</p>
+                  <p className="mt-0.5 text-sm text-ink">{respondent.data.full_name || "—"}</p>
+                </div>
+                <div className="border-b border-line pb-3">
+                  <p className="text-xs text-ink-faint">Phone</p>
+                  <p className="mt-0.5 text-sm text-ink">{respondent.data.phone || "—"}</p>
+                </div>
+                <div className="border-b border-line pb-3 last:border-0 last:pb-0">
+                  <p className="text-xs text-ink-faint">Email</p>
+                  <p className="mt-0.5 text-sm text-ink">{respondent.data.email || "—"}</p>
+                </div>
+                {Object.entries(respondent.data.custom_fields).map(([code, value]) => {
+                  const q = schema.data?.demographic_questions.find((dq) => dq.code === code);
+                  return (
+                    <div key={code} className="border-b border-line pb-3 last:border-0 last:pb-0">
+                      <p className="text-xs text-ink-faint">{q?.label.en ?? code}</p>
+                      <p className="mt-0.5 text-sm text-ink">
+                        {q ? displayAnswer(q, value, choiceLabel) : String(value)}
+                      </p>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           )}

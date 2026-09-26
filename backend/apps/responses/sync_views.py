@@ -167,7 +167,7 @@ class SyncBatchView(APIView):
                 respondent=respondent, notice=notice, method=payload["method"],
                 granted_at=payload.get("granted_at"), captured_by=self.request.user,
                 captured_offline=payload.get("captured_offline", False),
-                purposes=payload.get("purposes"), signature_attachment_id=payload.get("signature_attachment_id"),
+                purposes=payload.get("purposes"), signature_base64=payload.get("signature_base64"),
                 client_ref_id=client_ref_id,
             )
             return {"status": "created" if created else "updated", "id": str(record.id)}

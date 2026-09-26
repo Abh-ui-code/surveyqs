@@ -63,7 +63,7 @@ class Survey(SoftDeleteModel, AuthoredModel):
     )
 
     # anonymous, consent_required, consent_notice_id, one_response_per_respondent,
-    # require_gps, gps_accuracy_threshold_m, auto_approve, close_grace_days, etc.
+    # require_gps, gps_accuracy_threshold_m, close_grace_days, etc.
     settings = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -199,3 +199,40 @@ class Question(BaseModel):
     @property
     def required_bool_or_expression(self):
         return True if self.is_required == "true" else (False if self.is_required == "false" else self.is_required)
+
+
+class SurveyDemographicField(BaseModel):
+    """
+    A demographic question selected from apps.respondents.models
+    .DemographicQuestion into this specific survey version -- the
+    Respondent step's counterpart to Section/Question. Frozen into
+    schema_json's `demographic_questions` at publish time exactly like
+    regular questions are, so a response's Respondent step can always be
+    reconstructed against the version it was actually collected under
+    (see apps.responses.models.SurveyResponse.survey_version).
+    """
+
+    version = models.ForeignKey(SurveyVersion, on_delete=models.CASCADE, related_name="demographic_fields")
+    code = models.CharField(max_length=63, validators=[validate_question_code])
+    type = models.CharField(max_length=30)
+    order = models.PositiveIntegerField()
+
+    label = models.JSONField(default=dict)
+    hint = models.JSONField(default=dict, blank=True)
+
+    is_required = models.CharField(max_length=1000, blank=True, default="false")
+    is_pii = models.BooleanField(default=False)
+    constraint = models.CharField(max_length=1000, blank=True)
+    constraint_message = models.JSONField(default=dict, blank=True)
+
+    choice_list = models.ForeignKey(
+        ChoiceList, null=True, blank=True, on_delete=models.SET_NULL, related_name="demographic_fields"
+    )
+    config = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        app_label = "surveys"
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"{self.code} ({self.type})"

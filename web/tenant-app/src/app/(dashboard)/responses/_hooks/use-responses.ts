@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { responseKeys } from "@/lib/query-keys";
 
@@ -32,7 +32,6 @@ export interface ResponseDetail extends ResponseRow {
   is_edited: boolean;
   attachments: Array<{ id: string; question_code: string; kind: string; filename: string; url: string | null }>;
   flags: Array<{ id: string; code: string; severity: string; message: string }>;
-  reviews: Array<{ id: string; action: string; reason_code: string; notes: string; created_at: string }>;
 }
 
 export interface ResponseFilters {
@@ -57,27 +56,5 @@ export function useResponse(id: string) {
     queryKey: responseKeys.detail(id),
     queryFn: () => api.get<ResponseDetail>(`/responses/${id}/`),
     enabled: !!id,
-  });
-}
-
-export function useApproveResponse(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.post(`/responses/${id}/approve/`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: responseKeys.detail(id) });
-      qc.invalidateQueries({ queryKey: ["responses"] });
-    },
-  });
-}
-
-export function useRejectResponse(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: { reason_code: string; notes?: string }) => api.post(`/responses/${id}/reject/`, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: responseKeys.detail(id) });
-      qc.invalidateQueries({ queryKey: ["responses"] });
-    },
   });
 }

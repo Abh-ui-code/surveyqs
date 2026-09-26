@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { evaluateExpression, type AnswerMap, type AnswerValue, type PendingAttachment, type Question } from "@surveyqs/shared";
+import {
+  branchParentCode,
+  evaluateExpression,
+  sortByBranchAdjacency,
+  type AnswerMap,
+  type AnswerValue,
+  type PendingAttachment,
+  type Question,
+} from "@surveyqs/shared";
 
-import { Btn, FieldError, FieldLabel } from "@/components/primitives";
+import { Btn, Card, FieldError, ProgressBar } from "@/components/primitives";
 import { widgetFor } from "@/components/widgets";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useFormPackage } from "@/hooks/use-assignments";
@@ -51,9 +59,15 @@ export default function FormSectionScreen({ route, navigation }: Props) {
 
   const section = pkg.data?.sections[sectionIndex];
 
+  // Sorted before filtering, not after -- a branch question must render
+  // directly under its parent, and filtering first would lose the parent
+  // whenever it happened to be hidden but the branch (already answered
+  // some other way) was still visible.
   const visibleQuestions = useMemo(() => {
     if (!section) return [];
-    return section.questions.filter((q) => evaluateExpression(q.relevant, { answers: localAnswers }, true));
+    return sortByBranchAdjacency(section.questions).filter((q) =>
+      evaluateExpression(q.relevant, { answers: localAnswers }, true),
+    );
   }, [section, localAnswers]);
 
   if (pkg.isPending || draft.isPending || !section) {
@@ -136,60 +150,156 @@ export default function FormSectionScreen({ route, navigation }: Props) {
     navigation.reset({ index: 0, routes: [{ name: "Tabs" }] });
   }
 
+  const totalSections = pkg.data?.sections.length ?? 1;
+  const percent = Math.round(((sectionIndex + 1) / totalSections) * 100);
+
+  // Precomputed rather than incremented during the render map below —
+  // mutating a counter while mapping trips the immutability lint rule.
+  const questionNumbers = new Map<string, number>();
+  let numbered = 0;
+  for (const q of visibleQuestions) {
+    if (q.type !== "note") questionNumbers.set(q.id, ++numbered);
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 }}>
-        <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700" }}>
-          {section.title.en ?? Object.values(section.title)[0]}{" "}
-          <Text style={{ color: colors.textFaint, fontWeight: "600", fontSize: 12.5 }}>
-            {sectionIndex + 1} / {pkg.data?.sections.length}
-          </Text>
+      <View
+        style={{
+          paddingHorizontal: 20,
+          paddingTop: insets.top + 2,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.surface,
+        }}
+      >
+        <Pressable
+          onPress={() => navigation.goBack()}
+          hitSlop={10}
+          style={{ alignSelf: "flex-start", marginBottom: 6, marginLeft: -4, padding: 4 }}
+        >
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: "600" }}>‹</Text>
+        </Pressable>
+        <Text style={{ color: colors.accent, fontSize: 11.5, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase" }}>
+          Section {sectionIndex + 1} of {totalSections}
         </Text>
-        <View style={{ height: 5, borderRadius: 99, backgroundColor: colors.surface, marginTop: 8, overflow: "hidden" }}>
-          <View
-            style={{
-              width: `${Math.round(((sectionIndex + 1) / (pkg.data?.sections.length ?? 1)) * 100)}%`,
-              height: "100%",
-              backgroundColor: colors.accent,
-            }}
-          />
+        <Text style={{ color: colors.text, fontSize: 20, fontWeight: "800", marginTop: 2, marginBottom: 8 }}>
+          {section.title.en ?? Object.values(section.title)[0]}
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <ProgressBar value={percent} />
+          </View>
+          <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: "700", minWidth: 34, textAlign: "right" }}>{percent}%</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 22 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 18, paddingBottom: 32, gap: 16 }} keyboardShouldPersistTaps="handled">
         {visibleQuestions.map((q) => {
           const Widget = widgetFor(q.type);
-          return (
-            <View key={q.id}>
-              {q.type !== "note" && (
-                <FieldLabel required={isRequired(q)}>{q.label.en ?? Object.values(q.label)[0]}</FieldLabel>
-              )}
-              {q.type === "note" ? (
-                <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 19 }}>{q.label.en ?? Object.values(q.label)[0]}</Text>
-              ) : (
-                <>
-                  {q.hint && <Text style={{ color: colors.textFaint, fontSize: 11.5, marginBottom: 6 }}>{q.hint.en}</Text>}
-                  <Widget
-                    question={q}
-                    value={localAnswers[q.code] ?? null}
-                    onChange={(value: AnswerValue) => handleAnswerChange(q.code, value)}
-                    choiceLists={pkg.data?.choice_lists ?? []}
-                    onAttachment={(att) => setAttachments((prev) => [...prev, att])}
-                  />
+          const isNote = q.type === "note";
+          const questionNumber = questionNumbers.get(q.id);
+          // A question conditioned on an earlier one in this section renders
+          // indented directly beneath it -- the same "branch" grouping the
+          // web builder and web collection flow use (see
+          // @surveyqs/shared::branchParentCode). Sorting visibleQuestions
+          // above is what guarantees it's actually adjacent to render next
+          // to; this only decides how to draw it.
+          const isBranch = branchParentCode(q, section.questions) !== null;
+
+          if (isNote) {
+            return (
+              <View
+                key={q.id}
+                style={{
+                  backgroundColor: colors.accentSoft,
+                  borderRadius: 14,
+                  padding: 16,
+                  flexDirection: "row",
+                  gap: 10,
+                  marginLeft: isBranch ? 20 : 0,
+                }}
+              >
+                <Text style={{ fontSize: 16 }}>💡</Text>
+                <Text style={{ flex: 1, color: colors.text, fontSize: 13.5, lineHeight: 20, fontWeight: "500" }}>
+                  {q.label.en ?? Object.values(q.label)[0]}
+                </Text>
+              </View>
+            );
+          }
+
+          const questionCard = (
+            <Card style={{ padding: 18, borderRadius: 16 }}>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <View
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 9,
+                    backgroundColor: colors.accentSoft,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginTop: 1,
+                  }}
+                >
+                  <Text style={{ color: colors.accentStrong, fontSize: 12.5, fontWeight: "800" }}>{questionNumber}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15.5, fontWeight: "700", color: colors.text, lineHeight: 21 }}>
+                    {q.label.en ?? Object.values(q.label)[0]}
+                    {isRequired(q) && <Text style={{ color: colors.rust }}> *</Text>}
+                  </Text>
+                  {q.hint && (
+                    <Text style={{ color: colors.textFaint, fontSize: 12, marginTop: 3, lineHeight: 17 }}>{q.hint.en}</Text>
+                  )}
+                  <View style={{ marginTop: 6 }}>
+                    <Widget
+                      question={q}
+                      value={localAnswers[q.code] ?? null}
+                      onChange={(value: AnswerValue) => handleAnswerChange(q.code, value)}
+                      choiceLists={pkg.data?.choice_lists ?? []}
+                      onAttachment={(att) => setAttachments((prev) => [...prev, att])}
+                    />
+                  </View>
                   <FieldError message={errors[q.code]} />
-                </>
-              )}
+                </View>
+              </View>
+            </Card>
+          );
+
+          if (!isBranch) return <View key={q.id}>{questionCard}</View>;
+          return (
+            <View
+              key={q.id}
+              style={{ marginLeft: 20, borderLeftWidth: 2, borderLeftColor: colors.accentSoft, paddingLeft: 12 }}
+            >
+              {questionCard}
             </View>
           );
         })}
       </ScrollView>
 
-      <View style={{ flexDirection: "row", gap: 10, padding: 16, paddingBottom: insets.bottom + 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+          padding: 12,
+          paddingBottom: insets.bottom + 12,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          backgroundColor: colors.surface,
+          shadowColor: "#000",
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: -2 },
+          elevation: 6,
+        }}
+      >
         <View style={{ flex: 1 }}>
-          <Btn title="Save draft" variant="ghost" onPress={saveAndExit} />
+          <Btn title="Save draft" variant="ghost" size="sm" onPress={saveAndExit} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Btn title="Next ›" loading={updateDraft.isPending} onPress={onNext} />
+        <View style={{ flex: 2 }}>
+          <Btn title="Next ›" size="sm" loading={updateDraft.isPending} onPress={onNext} />
         </View>
       </View>
     </View>

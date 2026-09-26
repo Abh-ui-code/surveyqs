@@ -27,6 +27,10 @@ export const questionBankCategoryKeys = {
   list: () => ["question-bank-categories"] as const,
 };
 
+export const demographicQuestionKeys = {
+  list: (params: object) => ["demographic-questions", params] as const,
+};
+
 export const surveyKeys = {
   list: (params: object) => ["surveys", params] as const,
   detail: (id: string) => ["survey", id] as const,

@@ -1,25 +1,17 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { evaluateExpression, type AnswerMap, type AnswerValue } from "@surveyqs/shared";
 
-import { Btn, FieldLabel, FormScroll, Input } from "@/components/primitives";
+import { Btn, FieldError, FieldLabel, FormScroll, Input } from "@/components/primitives";
+import { widgetFor } from "@/components/widgets";
 import { useTheme } from "@/theme/ThemeProvider";
+import { useFormPackage } from "@/hooks/use-assignments";
 import { useCreateDraft, useDraft, useUpdateDraft } from "@/hooks/use-drafts";
 import { useRespondentMatch } from "@/hooks/use-respondent-lookup";
 import type { RootStackParamList } from "@/navigation/types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "RespondentCapture">;
-
-// Same field set AND order as the web app's respondent form
-// (RespondentStep in web/tenant-app/.../collect/_components): full name
-// first, then phone, email, gender, address. "" reads as "Prefer not to
-// say" there too.
-const GENDER_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "Prefer not to say" },
-  { value: "female", label: "Female" },
-  { value: "male", label: "Male" },
-  { value: "other", label: "Other" },
-];
 
 export default function RespondentCaptureScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
@@ -29,13 +21,21 @@ export default function RespondentCaptureScreen({ route, navigation }: Props) {
   // nothing behind to show up as a phantom "in progress" card. Resuming
   // (mode "resume") loads the draft that already exists.
   const existingDraft = useDraft(params.mode === "resume" ? params.draftId : undefined);
+  const versionId = params.mode === "resume" ? existingDraft.data?.versionId : params.versionId;
+  // The survey's admin-selected demographic questions (see the web app's
+  // Admin -> Demographic questions), same frozen package FormSectionScreen
+  // reads its own questions from -- rendered here instead of a hardcoded
+  // gender/address pair, per FormPackage.demographic_questions.
+  const pkg = useFormPackage(versionId);
   const createDraft = useCreateDraft();
   const updateDraft = useUpdateDraft();
   const [fullName, setFullName] = useState(existingDraft.data?.respondent?.full_name ?? "");
   const [phone, setPhone] = useState(existingDraft.data?.respondent?.phone ?? "");
   const [email, setEmail] = useState(existingDraft.data?.respondent?.email ?? "");
-  const [gender, setGender] = useState(existingDraft.data?.respondent?.gender ?? "");
-  const [address, setAddress] = useState(existingDraft.data?.respondent?.address ?? "");
+  const [customFields, setCustomFields] = useState<Record<string, AnswerValue>>(
+    (existingDraft.data?.respondent?.custom_fields as Record<string, AnswerValue>) ?? {},
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const match = useRespondentMatch(phone);
   const [usedMatch, setUsedMatch] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -46,16 +46,35 @@ export default function RespondentCaptureScreen({ route, navigation }: Props) {
     setUsedMatch(true);
   }
 
+  function isRequired(required: boolean | string | undefined): boolean {
+    if (typeof required === "boolean") return required;
+    if (typeof required === "string") return evaluateExpression(required, { answers: customFields as AnswerMap }, false);
+    return false;
+  }
+
+  function validateDemographics(): boolean {
+    const next: Record<string, string> = {};
+    for (const q of pkg.data?.demographic_questions ?? []) {
+      const value = customFields[q.code];
+      const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+      if (isRequired(q.required) && empty) {
+        next[q.code] = q.required_message?.en ?? "This question needs an answer before you can continue.";
+      }
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }
+
   const respondent = {
     phone,
     full_name: fullName,
     email: email || undefined,
-    gender: gender || undefined,
-    address: address || undefined,
     existingId: usedMatch ? (match?.id ?? undefined) : undefined,
+    custom_fields: customFields,
   };
 
   async function next() {
+    if (!validateDemographics()) return;
     setSaving(true);
     try {
       if (params.mode === "resume") {
@@ -129,38 +148,22 @@ export default function RespondentCaptureScreen({ route, navigation }: Props) {
           />
         </View>
 
-        <View style={{ opacity: locked ? 0.6 : 1 }}>
-          <FieldLabel>Gender</FieldLabel>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {GENDER_OPTIONS.map((opt) => {
-              const selected = gender === opt.value;
-              return (
-                <Pressable
-                  key={opt.label}
-                  disabled={locked}
-                  onPress={() => setGender(opt.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={{
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: selected ? colors.accent : colors.border,
-                    backgroundColor: selected ? colors.accentSoft : colors.surface,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Text style={{ color: selected ? colors.accentStrong : colors.text, fontWeight: "600", fontSize: 12.5 }}>{opt.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={{ opacity: locked ? 0.6 : 1 }}>
-          <FieldLabel>Address</FieldLabel>
-          <Input value={address} onChangeText={setAddress} editable={!locked} placeholder="Village / street" />
-        </View>
+        {(pkg.data?.demographic_questions ?? []).map((q) => {
+          const Widget = widgetFor(q.type);
+          return (
+            <View key={q.id} style={{ opacity: locked ? 0.6 : 1 }}>
+              <FieldLabel required={isRequired(q.required)}>{q.label.en ?? Object.values(q.label)[0]}</FieldLabel>
+              <Widget
+                question={q}
+                value={customFields[q.code] ?? null}
+                onChange={(value) => setCustomFields((f) => ({ ...f, [q.code]: value }))}
+                choiceLists={pkg.data?.choice_lists ?? []}
+                onAttachment={() => {}}
+              />
+              <FieldError message={errors[q.code]} />
+            </View>
+          );
+        })}
       </View>
     </FormScroll>
   );

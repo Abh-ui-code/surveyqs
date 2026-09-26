@@ -220,6 +220,11 @@ CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers  # noqa: E402
 
 CORS_ALLOW_HEADERS = [*default_headers, "x-request-id"]
+# Content-Disposition isn't in the browser's CORS-safelisted response
+# headers by default -- without exposing it, the report export's filename
+# (apps/reports/views.py::ExportResponsesView) is invisible to the web
+# app's JS, even though the download itself works fine.
+CORS_EXPOSE_HEADERS = ["content-disposition"]
 
 # ---------------------------------------------------------------------------
 # I18N / static / media

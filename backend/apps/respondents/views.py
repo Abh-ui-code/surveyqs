@@ -4,10 +4,11 @@ from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 
 from apps.core.viewset_mixins import TenantScopedMixin
 from apps.rbac.permissions import HasPermission
-from apps.respondents.models import ConsentNotice, ConsentRecord, Respondent
+from apps.respondents.models import ConsentNotice, ConsentRecord, DemographicQuestion, Respondent
 from apps.respondents.serializers import (
     ConsentNoticeSerializer,
     ConsentRecordSerializer,
+    DemographicQuestionSerializer,
     RespondentLookupResultSerializer,
     RespondentSerializer,
 )
@@ -16,6 +17,23 @@ from apps.respondents.services import (
     lookup_duplicate,
     withdraw_consent,
 )
+
+
+class DemographicQuestionViewSet(TenantScopedMixin, ModelViewSet):
+    module_code = "settings"
+    REQUIRED_ACTIONS = {"GET": "view", "POST": "create", "PATCH": "edit", "PUT": "edit", "DELETE": "delete"}
+    permission_classes = [HasPermission]
+    serializer_class = DemographicQuestionSerializer
+
+    def get_queryset(self):
+        qs = DemographicQuestion.objects.all()
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(label__en__icontains=search)
+        return qs
+
+    def perform_destroy(self, instance):
+        instance.soft_delete(actor=self.request.user)
 
 
 class RespondentViewSet(TenantScopedMixin, ModelViewSet):
@@ -98,7 +116,9 @@ class ConsentRecordViewSet(TenantScopedMixin, ModelViewSet):
             respondent=data.get("respondent"), notice=data["notice"], method=data["method"],
             granted_at=data.get("granted_at"), captured_by=request.user,
             captured_offline=data.get("captured_offline", False), purposes=data.get("purposes"),
-            signature_attachment_id=data.get("signature_attachment_id"),
+            signature_base64=data.get("signature_base64"),
             client_ref_id=data.get("client_ref_id"),
         )
-        return Response(ConsentRecordSerializer(record).data, status=201 if created else 200)
+        return Response(
+            ConsentRecordSerializer(record, context={"request": request}).data, status=201 if created else 200
+        )

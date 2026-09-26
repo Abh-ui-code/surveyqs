@@ -12,12 +12,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/permission-gate";
 import { canAccess, useMyPermissions } from "@/hooks/use-permissions";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { useDemographicQuestions } from "../../admin/demographic-questions/_hooks/use-demographic-questions";
 import { useResponses } from "../../responses/_hooks/use-responses";
 import { AnonymiseDialog } from "./_components/anonymise-dialog";
 import { useRespondent } from "../_hooks/use-respondents";
 
+/** A respondent's demographic answers aren't tied to one particular survey
+ * (the same person can be interviewed for several, each selecting its own
+ * subset from the shared bank) -- so labels here come from the bank
+ * directly rather than any one survey's frozen schema. */
+function demographicLabel(bank: ReturnType<typeof useDemographicQuestions>["data"], code: string, value: unknown): string {
+  const q = bank?.results.find((dq) => dq.code === code);
+  if (!q) return String(value);
+  if ((q.type === "select_one" || q.type === "select_multiple") && q.choices.length > 0) {
+    const labelFor = (v: unknown) => q.choices.find((c) => c.value === v)?.label.en ?? String(v);
+    return Array.isArray(value) ? value.map(labelFor).join(", ") : labelFor(value);
+  }
+  return Array.isArray(value) ? value.join(", ") : String(value);
+}
+
 function DetailContent({ respondentId }: { respondentId: string }) {
   const respondent = useRespondent(respondentId);
+  const demographicBank = useDemographicQuestions();
   const responses = useResponses({ respondent: respondentId, page: 1, page_size: 10 });
   const perms = useMyPermissions();
   const canEdit = canAccess(perms.data, "respondents", "edit");
@@ -101,15 +117,18 @@ function DetailContent({ respondentId }: { respondentId: string }) {
           {Object.keys(r.custom_fields).length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Custom fields</CardTitle>
+                <CardTitle>Demographic details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {Object.entries(r.custom_fields).map(([key, value]) => (
-                  <div key={key} className="flex justify-between text-sm">
-                    <span className="text-ink-muted">{key}</span>
-                    <span className="text-ink">{String(value)}</span>
-                  </div>
-                ))}
+                {Object.entries(r.custom_fields).map(([code, value]) => {
+                  const q = demographicBank.data?.results.find((dq) => dq.code === code);
+                  return (
+                    <div key={code} className="flex justify-between text-sm">
+                      <span className="text-ink-muted">{q?.label.en ?? code}</span>
+                      <span className="text-ink">{demographicLabel(demographicBank.data, code, value)}</span>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           )}

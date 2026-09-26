@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ClipboardCheck, FileStack, Flag } from "lucide-react";
+import { FileStack, Flag } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Kpi } from "@/components/ui/kpi";
@@ -10,31 +10,20 @@ import { PermissionGate } from "@/components/permission-gate";
 import { useDashboard } from "./_hooks/use-dashboard";
 
 const CATEGORY_COLORS = ["#1F6F5C", "#B8763E", "#6B8CAE", "#7A5AA3", "#B4432F"];
-const STATUS_LABEL: Record<string, string> = {
-  submitted: "Submitted",
-  under_review: "Awaiting review",
-  approved: "Approved",
-  rejected: "Rejected",
-};
 
 function DashboardContent() {
   const dashboard = useDashboard();
-
-  const approved = dashboard.data?.by_status.find((s) => s.status === "approved")?.count ?? 0;
-  const underReview = dashboard.data?.by_status.find((s) => s.status === "under_review")?.count ?? 0;
 
   return (
     <div>
       <PageHeader title="Dashboard" description="What's happening across every survey right now." />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Kpi icon={FileStack} label="Total responses" accent="brand" value={dashboard.data?.total_responses ?? "—"} />
-        <Kpi icon={ClipboardCheck} label="Approved" accent="moss" value={approved} />
-        <Kpi icon={AlertTriangle} label="Awaiting review" accent="amber" value={underReview} />
         <Kpi icon={Flag} label="Flagged" accent="rust" value={dashboard.data?.flagged_count ?? "—"} />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-6">
         <Card>
           <CardHeader>
             <CardTitle>Responses by category</CardTitle>
@@ -78,35 +67,6 @@ function DashboardContent() {
                   </li>
                 ))}
               </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Status breakdown</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {dashboard.isPending ? (
-              <Skeleton className="h-56 w-full" />
-            ) : dashboard.data && dashboard.data.by_status.length > 0 ? (
-              dashboard.data.by_status.map((s) => {
-                const total = dashboard.data!.total_responses || 1;
-                const pct = Math.round((s.count / total) * 100);
-                return (
-                  <div key={s.status}>
-                    <div className="mb-1 flex items-center justify-between text-sm">
-                      <span className="text-ink-muted">{STATUS_LABEL[s.status] ?? s.status}</span>
-                      <span className="font-mono-data font-medium text-ink">{s.count}</span>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper-sunken">
-                      <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="py-14 text-center text-sm text-ink-muted">No responses collected yet.</p>
             )}
           </CardContent>
         </Card>

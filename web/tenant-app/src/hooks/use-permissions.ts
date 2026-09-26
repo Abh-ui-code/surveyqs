@@ -23,7 +23,7 @@ export function useMyPermissions() {
   });
 }
 
-/** `canAccess(perms, "responses", "approve")`. Admins and superadmins pass
+/** `canAccess(perms, "responses", "export")`. Admins and superadmins pass
  * every check -- see the identical rule enforced server-side in
  * backend apps/rbac/services.py::user_has_permission. This function is UX
  * only; the server is the sole authority. */

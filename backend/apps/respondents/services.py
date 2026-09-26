@@ -4,9 +4,11 @@ docs/product/RESPONDENT_AND_CONSENT.md -- the phone-first lookup is the
 cheapest deduplication key and the one the mobile app checks before
 creating a new record, online or off.
 """
+import base64
 import hashlib
 from dataclasses import dataclass
 
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
@@ -56,11 +58,21 @@ def _integrity_hash(*, respondent_id, notice_id, method, granted_at, purposes) -
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _decode_signature(signature_base64: str) -> ContentFile:
+    """Both the mobile canvas and the web canvas hand back a PNG as a
+    base64 string -- a bare string on mobile, a `data:image/png;base64,...`
+    URI on web (whatever a `<canvas>`'s `toDataURL()` produces). Tolerate
+    either."""
+    if signature_base64.strip().startswith("data:"):
+        signature_base64 = signature_base64.split(",", 1)[1]
+    return ContentFile(base64.b64decode(signature_base64), name="signature.png")
+
+
 @transaction.atomic
 def capture_consent(
     *, respondent, notice, method: str, granted_at=None, captured_by=None,
     captured_offline: bool = False, purposes: list[str] | None = None,
-    signature_attachment_id=None, client_ref_id=None,
+    signature_base64: str | None = None, client_ref_id=None,
 ) -> tuple[ConsentRecord, bool]:
     if client_ref_id:
         existing = ConsentRecord.objects.filter(client_ref_id=client_ref_id).first()
@@ -72,12 +84,14 @@ def capture_consent(
     record = ConsentRecord.objects.create(
         respondent=respondent, notice=notice, method=method, granted_at=granted_at,
         captured_by_id=getattr(captured_by, "id", None), captured_offline=captured_offline,
-        purposes=purposes, signature_attachment_id=signature_attachment_id, client_ref_id=client_ref_id,
+        purposes=purposes, client_ref_id=client_ref_id,
         integrity_hash=_integrity_hash(
             respondent_id=respondent.id if respondent else None, notice_id=notice.id,
             method=method, granted_at=granted_at, purposes=purposes,
         ),
     )
+    if signature_base64:
+        record.signature_image.save("signature.png", _decode_signature(signature_base64), save=True)
     if respondent:
         respondent.consent_status = "granted"
         respondent.save(update_fields=["consent_status"])

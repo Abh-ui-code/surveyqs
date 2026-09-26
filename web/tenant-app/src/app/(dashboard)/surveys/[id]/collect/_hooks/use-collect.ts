@@ -86,8 +86,7 @@ export function useCreateRespondent() {
       full_name: string;
       phone?: string;
       email?: string;
-      gender?: string;
-      address?: string;
+      custom_fields?: Record<string, unknown>;
     }) => api.post<Respondent>("/respondents/", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["respondents"] }),
   });
@@ -110,8 +109,13 @@ export function useConsentNotices() {
 
 export function useCaptureConsent() {
   return useMutation({
-    mutationFn: (data: { respondent: string; notice: string; method: string; granted_at?: string }) =>
-      api.post("/consents/", data),
+    mutationFn: (data: {
+      respondent: string;
+      notice: string;
+      method: string;
+      granted_at?: string;
+      signature_base64?: string;
+    }) => api.post("/consents/", data),
   });
 }
 

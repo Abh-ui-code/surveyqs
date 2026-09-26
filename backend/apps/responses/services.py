@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.formlogic.validate import validate_submission
 from apps.responses.answer_storage import build_answer_rows
 from apps.responses.exceptions import SubmissionConflict, SubmissionRejected
-from apps.responses.models import Answer, ResponseReview, SurveyResponse
+from apps.responses.models import Answer, SurveyResponse
 from apps.responses.numbering import next_response_code
 from apps.surveys.models import Survey, SurveyVersion
 
@@ -85,10 +85,14 @@ def _assert_consent(survey: Survey, respondent_id):
         return
     from apps.respondents.models import ConsentRecord
 
-    has_consent = ConsentRecord.objects.filter(
-        respondent_id=respondent_id, is_withdrawn=False
-    ).exists()
-    if not has_consent:
+    qs = ConsentRecord.objects.filter(respondent_id=respondent_id, is_withdrawn=False)
+    # Specific to *this* survey's notice when one is configured -- a
+    # consent record captured for a different survey's text must not
+    # silently satisfy this gate.
+    notice_id = survey.settings.get("consent_notice_id")
+    if notice_id:
+        qs = qs.filter(notice_id=notice_id)
+    if not qs.exists():
         raise SubmissionRejected("consent_missing", "This survey requires consent, and none was recorded.")
 
 
@@ -126,7 +130,7 @@ def submit_response(*, user, payload: dict) -> tuple[SurveyResponse, str, list[d
         survey=version.survey, survey_version=version,
         assignment_id=payload.get("assignment_id"), respondent_id=respondent_id,
         collected_by_id=user.id,
-        status="under_review" if version.survey.settings.get("auto_approve") is False else "submitted",
+        status="submitted",
         answers=outcome.answers,
         started_at=started_at, submitted_at=submitted_at,
         duration_seconds=int((submitted_at - started_at).total_seconds()),
@@ -149,21 +153,3 @@ def _evaluate_quality_flags(response_id):
     from apps.responses.quality import evaluate_quality_flags
 
     evaluate_quality_flags(response_id)
-
-
-@transaction.atomic
-def approve_response(response: SurveyResponse, reviewer):
-    response.status = "approved"
-    response.save(update_fields=["status"])
-    ResponseReview.objects.create(response=response, action="approve", reviewer_id=reviewer.id)
-    return response
-
-
-@transaction.atomic
-def reject_response(response: SurveyResponse, reviewer, *, reason_code: str, notes: str = ""):
-    response.status = "rejected"
-    response.save(update_fields=["status"])
-    ResponseReview.objects.create(
-        response=response, action="reject", reviewer_id=reviewer.id, reason_code=reason_code, notes=notes
-    )
-    return response

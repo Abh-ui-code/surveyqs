@@ -100,7 +100,7 @@ def user_permission_summary(user) -> dict:
     role = user_roles_qs(user.id).first()
 
     if is_admin:
-        permissions = {code: ["view", "create", "edit", "delete", "approve", "export"] for code in enabled_modules}
+        permissions = {code: ["view", "create", "edit", "delete", "export"] for code in enabled_modules}
     else:
         permissions = {}
         rows = RolePermission.objects.filter(

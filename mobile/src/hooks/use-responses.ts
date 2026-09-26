@@ -18,12 +18,32 @@ export function useMyResponses() {
   });
 }
 
-/** Full answers + review history for one response — fetched on demand
- * when the agent taps "Edit and resubmit" on a rejected one. */
+/** Full answers, attachments and flags for one response. */
 export function useResponseDetail(id: string | undefined) {
   return useQuery({
     queryKey: ["responses", "detail", id],
     queryFn: () => api.get<ResponseDetail>(`/responses/${id}/`),
+    enabled: Boolean(id),
+  });
+}
+
+export interface RespondentDetail {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  /** Answers to this survey's admin-selected demographic questions
+   * (FormPackage.demographic_questions), keyed by question code. */
+  custom_fields: Record<string, unknown>;
+}
+
+/** The respondent record behind a response, for its demographic answers --
+ * `/responses/{id}/` only carries the id + display name, not
+ * `custom_fields`, so the detail screen fetches it separately. */
+export function useRespondentDetail(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ["respondents", "detail", id],
+    queryFn: () => api.get<RespondentDetail>(`/respondents/${id}/`),
     enabled: Boolean(id),
   });
 }

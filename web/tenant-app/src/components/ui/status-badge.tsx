@@ -11,11 +11,10 @@ const SURVEY_STATUS: Record<string, { label: string; tone: "neutral" | "brand" |
   archived: { label: "Archived", tone: "neutral" },
 };
 
+// A submission is final the moment it lands -- there is no admin
+// approval/rejection step, so "submitted" is the only status.
 const RESPONSE_STATUS: Record<string, { label: string; tone: "neutral" | "brand" | "amber" | "rust" | "moss" }> = {
-  submitted: { label: "Submitted", tone: "brand" },
-  under_review: { label: "Awaiting review", tone: "amber" },
-  approved: { label: "Approved", tone: "moss" },
-  rejected: { label: "Rejected", tone: "rust" },
+  submitted: { label: "Submitted", tone: "moss" },
 };
 
 const ASSIGNMENT_STATUS: Record<string, { label: string; tone: "neutral" | "brand" | "amber" | "rust" | "moss" }> = {

@@ -10,6 +10,7 @@ import SurveysScreen from "@/screens/home/SurveysScreen";
 import MyWorkScreen from "@/screens/home/MyWorkScreen";
 import SyncScreen from "@/screens/home/SyncScreen";
 import ProfileScreen from "@/screens/home/ProfileScreen";
+import ConsentScreen from "@/screens/interview/ConsentScreen";
 import RespondentCaptureScreen from "@/screens/interview/RespondentCaptureScreen";
 import FormSectionScreen from "@/screens/interview/FormSectionScreen";
 import ReviewSubmitScreen from "@/screens/interview/ReviewSubmitScreen";
@@ -69,8 +70,12 @@ export function RootNavigator() {
       ) : (
         <>
           <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
+          <Stack.Screen name="ConsentCapture" component={ConsentScreen} options={{ title: "Consent" }} />
           <Stack.Screen name="RespondentCapture" component={RespondentCaptureScreen} options={{ title: "Respondent" }} />
-          <Stack.Screen name="FormSection" component={FormSectionScreen} options={{ title: "" }} />
+          {/* headerShown: false -- the screen draws its own compact back
+              button + "Section X of Y" header so there's no separate
+              native header bar eating extra vertical space above it. */}
+          <Stack.Screen name="FormSection" component={FormSectionScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ReviewSubmit" component={ReviewSubmitScreen} options={{ title: "Review" }} />
           <Stack.Screen name="ResponseDetail" component={ResponseDetailScreen} options={{ title: "Response" }} />
         </>

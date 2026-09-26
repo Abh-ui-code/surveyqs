@@ -15,7 +15,6 @@ ACTION_CHOICES = [
     ("create", "Create"),
     ("edit", "Edit"),
     ("delete", "Delete"),
-    ("approve", "Approve"),
     ("export", "Export"),
 ]
 ACTION_CODES = [code for code, _ in ACTION_CHOICES]
@@ -34,7 +33,7 @@ DEFAULT_PERMISSIONS: dict[str, dict[str, list[str]]] = {
     "supervisor": {
         "surveys": ["view"],
         "assignments": ["view", "create", "edit"],
-        "responses": ["view", "edit", "approve", "export"],
+        "responses": ["view", "edit", "export"],
         "respondents": ["view", "create", "edit"],
         "reports": ["view", "export"],
     },

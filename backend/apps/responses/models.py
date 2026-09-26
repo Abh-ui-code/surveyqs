@@ -11,11 +11,11 @@ class SurveyResponse(SoftDeleteModel):
     docs/architecture/DATA_MODEL.md.
     """
 
+    # A submission is final the moment it lands -- there is no admin
+    # approval gate. "submitted" is the only status; the field (and the
+    # index below) stay so a future terminal state has somewhere to go.
     STATUS_CHOICES = [
         ("submitted", "Submitted"),
-        ("under_review", "Under review"),
-        ("approved", "Approved"),
-        ("rejected", "Rejected"),
     ]
 
     response_code = models.CharField(max_length=32, unique=True, db_index=True)
@@ -162,20 +162,3 @@ class NumberSequence(BaseModel):
 
     def __str__(self):
         return f"{self.key}:{self.year}:{self.last_value}"
-
-
-class ResponseReview(BaseModel):
-    ACTION_CHOICES = [("approve", "Approve"), ("reject", "Reject"), ("reopen", "Reopen")]
-
-    response = models.ForeignKey(SurveyResponse, on_delete=models.CASCADE, related_name="reviews")
-    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
-    reviewer_id = models.UUIDField()
-    reason_code = models.CharField(max_length=50, blank=True)
-    notes = models.TextField(blank=True)
-
-    class Meta:
-        app_label = "responses"
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return f"{self.action} on {self.response_id}"

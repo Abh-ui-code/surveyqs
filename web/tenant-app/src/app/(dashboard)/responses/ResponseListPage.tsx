@@ -17,7 +17,6 @@ import { useResponses, type ResponseRow } from "./_hooks/use-responses";
 
 function ResponsesContent() {
   const [survey, setSurvey] = useState("");
-  const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -26,7 +25,6 @@ function ResponsesContent() {
   const surveys = useSurveys({});
   const responses = useResponses({
     survey: survey || undefined,
-    status: status || undefined,
     search: search.length >= 2 ? search : undefined,
     page,
     page_size: pageSize,
@@ -114,27 +112,12 @@ function ResponsesContent() {
             </option>
           ))}
         </Select>
-        <Select
-          className="w-44"
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">All statuses</option>
-          <option value="submitted">Submitted</option>
-          <option value="under_review">Awaiting review</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </Select>
-        {(survey || status || search) && (
+        {(survey || search) && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
               setSurvey("");
-              setStatus("");
               setSearch("");
               setPage(1);
             }}

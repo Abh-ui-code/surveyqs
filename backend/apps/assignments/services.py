@@ -71,12 +71,7 @@ def assignment_progress(assignment: SurveyAssignment) -> dict:
     from apps.responses.models import SurveyResponse
 
     qs = SurveyResponse.objects.filter(assignment=assignment, is_deleted=False)
-    counts = {
-        "submitted": qs.count(),
-        "approved": qs.filter(status="approved").count(),
-        "rejected": qs.filter(status="rejected").count(),
-        "under_review": qs.filter(status="under_review").count(),
-    }
+    counts = {"submitted": qs.count()}
     return {
         "target_count": assignment.target_count,
         **counts,

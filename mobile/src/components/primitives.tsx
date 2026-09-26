@@ -34,10 +34,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
 
 type Variant = "primary" | "success" | "secondary" | "danger" | "ghost";
+type Size = "md" | "sm";
 
 interface BtnProps extends PressableProps {
   title: string;
   variant?: Variant;
+  size?: Size;
   loading?: boolean;
   fullWidth?: boolean;
 }
@@ -45,9 +47,23 @@ interface BtnProps extends PressableProps {
 /**
  * Sizing/colors matched directly to the reference app's buttons: blue for
  * every normal primary action (Sign in, Start, Next), green reserved for
- * a final Submit-type confirm, ~50px tall, 12px radius, 16px bold label.
+ * a final Submit-type confirm, ~50px tall, 12px radius, 16px bold label —
+ * that's `size="md"`, the default. `size="sm"` is for a spot that needs a
+ * lower-emphasis, less thumb-dominating action (e.g. a form's own
+ * Save/Next bar) without touching the reference sizing everywhere else.
  */
-export function Btn({ title, variant = "primary", loading, disabled, fullWidth = true, style, onPressIn, onPressOut, ...props }: BtnProps) {
+export function Btn({
+  title,
+  variant = "primary",
+  size = "md",
+  loading,
+  disabled,
+  fullWidth = true,
+  style,
+  onPressIn,
+  onPressOut,
+  ...props
+}: BtnProps) {
   const { colors } = useTheme();
   const [pressed, setPressed] = useState(false);
   // Every variant gets a visible fill — "ghost" used to mean literally
@@ -95,8 +111,8 @@ export function Btn({ title, variant = "primary", loading, disabled, fullWidth =
           backgroundColor: bg[variant],
           borderWidth: border[variant] ? 1 : 0,
           borderColor: border[variant],
-          borderRadius: 12,
-          paddingVertical: 15,
+          borderRadius: size === "sm" ? 10 : 12,
+          paddingVertical: size === "sm" ? 10 : 15,
           alignItems: "center",
           justifyContent: "center",
           width: fullWidth ? "100%" : undefined,
@@ -109,7 +125,7 @@ export function Btn({ title, variant = "primary", loading, disabled, fullWidth =
       {loading ? (
         <ActivityIndicator color={textColor[variant]} />
       ) : (
-        <Text style={{ color: textColor[variant], fontWeight: "700", fontSize: 16 }}>{title}</Text>
+        <Text style={{ color: textColor[variant], fontWeight: "700", fontSize: size === "sm" ? 14 : 16 }}>{title}</Text>
       )}
     </Pressable>
   );

@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from apps.surveys.models import Choice, ChoiceList, Question, Section, Survey, SurveyCategory, SurveyVersion
+from apps.surveys.models import (
+    Choice,
+    ChoiceList,
+    Question,
+    Section,
+    Survey,
+    SurveyCategory,
+    SurveyDemographicField,
+    SurveyVersion,
+)
 
 
 class SurveyCategorySerializer(serializers.ModelSerializer):
@@ -143,15 +152,27 @@ class SectionSerializer(serializers.ModelSerializer):
         fields = ["id", "code", "order", "title", "description", "relevant", "questions"]
 
 
+class SurveyDemographicFieldSerializer(serializers.ModelSerializer):
+    order = serializers.IntegerField(required=False)  # server-assigned by default; see views.perform_create
+
+    class Meta:
+        model = SurveyDemographicField
+        fields = [
+            "id", "code", "type", "order", "label", "hint", "is_required",
+            "is_pii", "constraint", "constraint_message", "choice_list", "config",
+        ]
+
+
 class SurveyVersionSerializer(serializers.ModelSerializer):
     sections = SectionSerializer(many=True, read_only=True)
     choice_lists = ChoiceListSerializer(many=True, read_only=True)
+    demographic_fields = SurveyDemographicFieldSerializer(many=True, read_only=True)
 
     class Meta:
         model = SurveyVersion
         fields = [
             "id", "version_number", "status", "change_note", "published_at",
-            "response_count", "sections", "choice_lists",
+            "response_count", "sections", "choice_lists", "demographic_fields",
         ]
 
 

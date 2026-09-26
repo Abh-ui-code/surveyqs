@@ -18,6 +18,7 @@ import type { AnswerValue, ChoiceList, Question } from "@surveyqs/shared";
 
 import { Btn, Input } from "@/components/primitives";
 import { useTheme } from "@/theme/ThemeProvider";
+import type { ThemeColors } from "@/theme/tokens";
 import { newUuid } from "@/lib/uuid";
 import type { PendingAttachment } from "@surveyqs/shared";
 
@@ -31,6 +32,11 @@ export interface WidgetProps {
   onAttachment: (att: PendingAttachment) => void;
 }
 
+// Smaller than the primitive's own default (which is sized for a
+// standalone form like Login) -- a survey question's input sits inside an
+// already-padded question card, so it doesn't need the extra room.
+const COMPACT_INPUT_STYLE = { paddingVertical: 9, fontSize: 14 };
+
 function TextWidget({ question, value, onChange, multiline }: WidgetProps & { multiline?: boolean }) {
   return (
     <Input
@@ -40,6 +46,7 @@ function TextWidget({ question, value, onChange, multiline }: WidgetProps & { mu
       numberOfLines={multiline ? 4 : undefined}
       keyboardType={question.type === "email" ? "email-address" : question.type === "phone" ? "phone-pad" : "default"}
       autoCapitalize={question.type === "email" ? "none" : "sentences"}
+      style={COMPACT_INPUT_STYLE}
     />
   );
 }
@@ -50,6 +57,7 @@ function NumberWidget({ value, onChange }: WidgetProps) {
       value={value == null ? "" : String(value)}
       onChangeText={(v) => onChange(v === "" ? null : Number(v.replace(/[^0-9.-]/g, "")))}
       keyboardType="numeric"
+      style={COMPACT_INPUT_STYLE}
     />
   );
 }
@@ -93,7 +101,55 @@ function YesNoWidget({ value, onChange }: WidgetProps) {
   );
 }
 
-function ChoiceChips({ value, onChange, choiceLists, question, multi }: WidgetProps & { multi?: boolean }) {
+/** Radio dot for select_one — outer ring always visible, inner dot drawn
+ * only when selected so the unselected state doesn't read as a filled disc. */
+function RadioIndicator({ selected, colors }: { selected: boolean; colors: ThemeColors }) {
+  return (
+    <View
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: selected ? colors.accent : colors.textFaint,
+        backgroundColor: colors.surface,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.accent }} />}
+    </View>
+  );
+}
+
+/** Checkbox for select_multiple — filled square + tick, matched to the
+ * ✓ glyph already used for "captured"/"synced" states elsewhere in this
+ * file rather than pulling in an icon font just for this. */
+function CheckboxIndicator({ selected, colors }: { selected: boolean; colors: ThemeColors }) {
+  return (
+    <View
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: selected ? colors.accent : colors.textFaint,
+        backgroundColor: selected ? colors.accent : colors.surface,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {selected && <Text style={{ color: colors.accentInk, fontSize: 12, fontWeight: "900", lineHeight: 13 }}>✓</Text>}
+    </View>
+  );
+}
+
+/** select_one / select_multiple render as a vertical list of full-width
+ * rows with a real radio button or checkbox — the client asked for this
+ * to look like a standard paper/professional survey instead of the
+ * wrapped pill-chip picker, which read as tap-targets rather than
+ * single- vs. multi-answer questions. */
+function ChoiceGroup({ value, onChange, choiceLists, question, multi }: WidgetProps & { multi?: boolean }) {
   const { colors } = useTheme();
   const listName = question.config?.choice_list as string | undefined;
   const list = choiceLists.find((l) => l.name === listName);
@@ -112,32 +168,35 @@ function ChoiceChips({ value, onChange, choiceLists, question, multi }: WidgetPr
     return <Text style={{ color: colors.rust, fontSize: 12 }}>Choice list "{listName}" is missing from this package.</Text>;
   }
 
+  const choices = list.choices.filter((c) => c.active !== false).sort((a, b) => a.order - b.order);
+
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-      {list.choices
-        .filter((c) => c.active !== false)
-        .sort((a, b) => a.order - b.order)
-        .map((c) => {
-          const isSelected = selected.includes(c.value);
-          return (
-            <View
-              key={c.value}
-              style={{
-                borderRadius: 999,
-                borderWidth: 1.5,
-                borderColor: isSelected ? colors.accent : colors.border,
-                backgroundColor: isSelected ? colors.accentSoft : colors.surface,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
-              }}
-              onTouchEnd={() => toggle(c.value)}
-            >
-              <Text style={{ color: isSelected ? colors.accent : colors.text, fontWeight: "600", fontSize: 13 }}>
-                {c.label.en ?? Object.values(c.label)[0]}
-              </Text>
-            </View>
-          );
-        })}
+    // No per-option box or divider -- just a plain, tightly-stacked list
+    // of rows, per the client's ask to cut the wasted vertical space a
+    // full box (and even a hairline) per choice was costing.
+    <View accessibilityRole={multi ? undefined : "radiogroup"}>
+      {choices.map((c) => {
+        const isSelected = selected.includes(c.value);
+        return (
+          <Pressable
+            key={c.value}
+            onPress={() => toggle(c.value)}
+            accessibilityRole={multi ? "checkbox" : "radio"}
+            accessibilityState={multi ? { checked: isSelected } : { selected: isSelected }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 11,
+              paddingVertical: 9,
+            }}
+          >
+            {multi ? <CheckboxIndicator selected={isSelected} colors={colors} /> : <RadioIndicator selected={isSelected} colors={colors} />}
+            <Text style={{ flex: 1, color: isSelected ? colors.accent : colors.text, fontWeight: isSelected ? "600" : "400", fontSize: 13.5 }}>
+              {c.label.en ?? Object.values(c.label)[0]}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -255,8 +314,8 @@ export const WIDGETS: Record<string, WidgetComponent> = {
   percentage: (p) => <NumberWidget {...p} />,
   range: (p) => <NumberWidget {...p} />,
   yes_no: (p) => <YesNoWidget {...p} />,
-  select_one: (p) => <ChoiceChips {...p} />,
-  select_multiple: (p) => <ChoiceChips {...p} multi />,
+  select_one: (p) => <ChoiceGroup {...p} />,
+  select_multiple: (p) => <ChoiceGroup {...p} multi />,
   date: (p) => <DateWidget {...p} />,
   geopoint: (p) => <GeopointWidget {...p} />,
   image: (p) => <ImageWidget {...p} />,

@@ -1,62 +1,32 @@
-import { useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
-import type { ResponseDetail, ResponseListItem } from "@surveyqs/shared";
+import type { ResponseListItem } from "@surveyqs/shared";
 
-import { Btn, EmptyState, StatusChip, type ChipStatus } from "@/components/primitives";
+import { EmptyState, StatusChip, type ChipStatus } from "@/components/primitives";
 import { ResponseListSkeleton } from "@/components/Skeleton";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useMyResponses } from "@/hooks/use-responses";
-import { useCreateDraft, useUpdateDraft } from "@/hooks/use-drafts";
-import { api } from "@/lib/api";
 import { useRootNavigation } from "@/navigation/use-root-navigation";
 
-const STATUS_CHIP: Record<ResponseListItem["status"], { status: ChipStatus; label: string }> = {
-  submitted: { status: "neutral", label: "Submitted" },
-  under_review: { status: "neutral", label: "Awaiting review" },
-  approved: { status: "ok", label: "Approved" },
-  rejected: { status: "bad", label: "Rejected" },
+const STATUS_CHIP: Record<string, { status: ChipStatus; label: string }> = {
+  submitted: { status: "ok", label: "Submitted" },
 };
+
+/** A response's `status` is only ever "submitted" going forward (see
+ * backend apps/responses/models.py), but the column has held other values
+ * in the past (under_review/approved/rejected, from an earlier review
+ * workflow) and nothing rewrites old rows when a status vocabulary
+ * shrinks -- so older responses can still carry one of those. Falling back
+ * to a humanized, neutral chip instead of indexing STATUS_CHIP directly
+ * keeps this screen from crashing on that legacy data. */
+function chipFor(status: ResponseListItem["status"]): { status: ChipStatus; label: string } {
+  return STATUS_CHIP[status] ?? { status: "neutral", label: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ") };
+}
 
 export default function MyWorkScreen() {
   const { colors } = useTheme();
   const nav = useRootNavigation();
-  const qc = useQueryClient();
   const responses = useMyResponses();
-  const createDraft = useCreateDraft();
-  const updateDraft = useUpdateDraft();
-  const [resubmittingId, setResubmittingId] = useState<string | null>(null);
-
-  async function editAndResubmit(item: ResponseListItem) {
-    setResubmittingId(item.id);
-    try {
-      const detail = await qc.fetchQuery({
-        queryKey: ["responses", "detail", item.id],
-        queryFn: () => api.get<ResponseDetail>(`/responses/${item.id}/`),
-      });
-      const draft = await createDraft.mutateAsync({
-        surveyId: detail.survey,
-        surveyTitle: detail.survey_title,
-        versionId: detail.survey_version,
-        resubmitOfResponseId: detail.id,
-        initialAnswers: detail.answers,
-      });
-      // The original interview already established the respondent — a
-      // resubmission edits answers, it doesn't re-ask.
-      await updateDraft.mutateAsync({
-        id: draft.id,
-        patch: {
-          respondent: detail.respondent
-            ? { existingId: detail.respondent, phone: "", full_name: detail.respondent_name ?? "" }
-            : null,
-        },
-      });
-      nav.navigate("FormSection", { draftId: draft.id, sectionIndex: 0 });
-    } finally {
-      setResubmittingId(null);
-    }
-  }
 
   return (
     <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -82,9 +52,7 @@ export default function MyWorkScreen() {
               key={item.id}
               item={item}
               divider={i > 0}
-              busy={resubmittingId === item.id}
               onPress={() => nav.navigate("ResponseDetail", { responseId: item.id })}
-              onEditAndResubmit={() => editAndResubmit(item)}
             />
           ))}
         </View>
@@ -97,18 +65,14 @@ export default function MyWorkScreen() {
 function ResponseRow({
   item,
   divider,
-  busy,
   onPress,
-  onEditAndResubmit,
 }: {
   item: ResponseListItem;
   divider: boolean;
-  busy: boolean;
   onPress: () => void;
-  onEditAndResubmit: () => void;
 }) {
   const { colors } = useTheme();
-  const chip = STATUS_CHIP[item.status];
+  const chip = chipFor(item.status);
   return (
     <Pressable
       onPress={onPress}
@@ -120,14 +84,11 @@ function ResponseRow({
             {item.category_label} · {item.respondent_name ?? "Unnamed"}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 11.5, marginTop: 2 }} numberOfLines={2}>
-            {item.status === "rejected" ? "Needs your attention" : new Date(item.submitted_at).toLocaleDateString()}
+            {new Date(item.submitted_at).toLocaleDateString()}
           </Text>
         </View>
         <StatusChip status={chip.status} label={chip.label} />
       </View>
-      {item.status === "rejected" && (
-        <Btn title={busy ? "Loading…" : "Edit and resubmit"} variant="secondary" loading={busy} onPress={onEditAndResubmit} />
-      )}
     </Pressable>
   );
 }

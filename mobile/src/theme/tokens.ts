@@ -26,7 +26,7 @@ export interface ThemeColors {
   successStrong: string;
   successSoft: string;
   successInk: string;
-  moss: string; // approved / synced / up to date (status pill only)
+  moss: string; // submitted / synced / up to date (status pill only)
   mossSoft: string;
   amber: string; // needs a look / new version / in-progress
   amberSoft: string;

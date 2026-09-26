@@ -9,7 +9,13 @@
  * order, the same labels, and the same branch layout -- keeping the logic
  * in one place is what keeps them from drifting apart.
  */
-import { evaluateExpression, type AnswerMap } from "@surveyqs/shared";
+import {
+  branchParentCode as sharedBranchParentCode,
+  conditionSourceCode as sharedConditionSourceCode,
+  evaluateExpression,
+  sortByBranchAdjacency,
+  type AnswerMap,
+} from "@surveyqs/shared";
 
 export interface ChoiceDef {
   value: string;
@@ -60,6 +66,11 @@ export interface FormPackage {
   settings: Record<string, unknown>;
   choice_lists: ChoiceListDef[];
   sections: SchemaSection[];
+  // The Respondent step's admin-selected fields for this survey (see Admin
+  // -> Demographic questions), frozen at publish time like sections/
+  // questions are. Rendered before the survey's own questions, answers
+  // stored on Respondent.custom_fields rather than a response's answers.
+  demographic_questions: SchemaQuestion[];
 }
 
 /** A section whose `relevant` is false hides every question inside it,
@@ -90,17 +101,24 @@ export function relevantQuestionCodes(sections: SchemaSection[], answers: Answer
  * "salary" the builder's condition editor stored it against. Only the
  * first reference is used: today's builder only ever writes one. */
 export function conditionSourceCode(question: SchemaQuestion): string | null {
-  if (!question.relevant) return null;
-  return question.relevant.match(/\$\{(\w+)\}/)?.[1] ?? null;
+  return sharedConditionSourceCode(question.relevant);
 }
 
 /** A question renders as a branch under its parent only when that parent
  * is another question in the very same section -- a condition pointing at
  * an earlier section has no adjacent row to nest under, so it stays flush. */
 export function branchParentCode(section: SchemaSection, question: SchemaQuestion): string | null {
-  const sourceCode = conditionSourceCode(question);
-  if (!sourceCode) return null;
-  return section.questions.some((q) => q.code === sourceCode) ? sourceCode : null;
+  return sharedBranchParentCode(question, section.questions);
+}
+
+/** Sorts a section's questions so every branch question sits directly
+ * after the question its condition points at -- see
+ * shared/src/question-order.ts. Every place that renders a section's
+ * questions in reading order (fill-out, response detail, the builder)
+ * reads through this rather than `section.questions` directly, so a branch
+ * question can never appear detached from its parent. */
+export function sortSectionQuestions(section: SchemaSection): SchemaQuestion[] {
+  return sortByBranchAdjacency(section.questions);
 }
 
 /** Renders a stored answer value the way a human should read it -- "Yes"

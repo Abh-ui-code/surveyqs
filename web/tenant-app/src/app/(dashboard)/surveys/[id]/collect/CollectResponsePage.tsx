@@ -4,12 +4,12 @@ import { type AnswerMap } from "@surveyqs/shared";
 import { ArrowLeft, ArrowRight, Check, ClipboardCheck, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SignaturePad, type SignaturePadHandle } from "@/components/ui/signature-pad";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/permission-gate";
 import { useMyPermissions } from "@/hooks/use-permissions";
@@ -20,6 +20,7 @@ import {
   isQuestionRelevant,
   isSectionRelevant,
   relevantQuestionCodes,
+  sortSectionQuestions,
 } from "@/lib/form-schema";
 import { cn } from "@/lib/utils";
 import { useSurvey } from "../../_hooks/use-surveys";
@@ -86,7 +87,13 @@ function CollectContent({ surveyId }: { surveyId: string }) {
   const [startedAt] = useState(() => new Date().toISOString());
   const [step, setStep] = useState(0);
   const [respondent, setRespondent] = useState<Respondent | null>(null);
-  const [consentAcknowledged, setConsentAcknowledged] = useState(false);
+  const sigRef = useRef<SignaturePadHandle>(null);
+  // Held client-side from the moment the respondent signs until there's a
+  // respondent record to attach it to -- ConsentRecord.respondent is
+  // nullable server-side for exactly this reason, but capturing it before
+  // a respondent exists at all (consent is the very first step) is simpler
+  // done here than as a two-phase create-then-link round trip.
+  const [signatureBase64, setSignatureBase64] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, AnswerValue | undefined>>({});
   const [imageFiles, setImageFiles] = useState<Record<string, File | undefined>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -121,8 +128,12 @@ function CollectContent({ surveyId }: { surveyId: string }) {
   );
 
   const consentRequired = !!survey.data?.settings?.consent_required && !survey.data?.settings?.anonymous;
-  const steps = ["Respondent", ...(consentRequired ? ["Consent"] : []), "Answers", "Review"];
-  const answersStepIndex = consentRequired ? 2 : 1;
+  const notice = consentNotices.data?.results.find((n) => n.id === survey.data?.settings?.consent_notice_id) ?? null;
+  // Consent (with the respondent's signature) comes first -- before their
+  // name, phone or anything else is asked -- rather than after Respondent.
+  const steps = [...(consentRequired ? ["Consent"] : []), "Respondent", "Answers", "Review"];
+  const respondentStepIndex = consentRequired ? 1 : 0;
+  const answersStepIndex = respondentStepIndex + 1;
   const reviewStepIndex = steps.length - 1;
 
   const stillLoading = survey.isPending || perms.isPending || assignment.isPending || versions.isPending;
@@ -197,28 +208,47 @@ function CollectContent({ surveyId }: { surveyId: string }) {
     return true;
   };
 
-  const goToAnswers = async () => {
-    if (consentRequired && step === answersStepIndex - 1) {
-      if (!consentAcknowledged) {
-        toast.error("Consent must be recorded before continuing.");
+  const handleContinue = async () => {
+    if (consentRequired && step === 0) {
+      if (!sigRef.current || sigRef.current.isEmpty()) {
+        toast.error("Ask the respondent to sign before continuing.");
         return;
       }
-      const notice = consentNotices.data?.results[0];
-      if (notice && respondent) {
+      setSignatureBase64(sigRef.current.toBase64());
+      setStep((s) => s + 1);
+      return;
+    }
+    if (step === respondentStepIndex) {
+      if (!respondent) {
+        toast.error("Select or add a respondent to continue.");
+        return;
+      }
+      if (consentRequired) {
+        if (!notice) {
+          toast.error("This survey's consent notice is missing.", { description: "Ask an administrator to set one up in the survey builder." });
+          return;
+        }
         try {
           await captureConsent.mutateAsync({
             respondent: respondent.id,
             notice: notice.id,
-            method: "verbal_confirmed",
+            method: "signature",
             granted_at: new Date().toISOString(),
+            signature_base64: signatureBase64 ?? undefined,
           });
         } catch (err) {
           toast.error("Couldn't record consent", { description: apiErrorMessage(err) });
           return;
         }
       }
+      setStep((s) => s + 1);
+      return;
     }
-    setStep((s) => s + 1);
+    if (step === answersStepIndex) {
+      if (!validateAnswers()) return;
+      setStep((s) => s + 1);
+      return;
+    }
   };
 
   const handleSubmit = () => {
@@ -290,7 +320,8 @@ function CollectContent({ surveyId }: { surveyId: string }) {
               onClick={() => {
                 setStep(0);
                 setRespondent(null);
-                setConsentAcknowledged(false);
+                setSignatureBase64(null);
+                sigRef.current?.clear();
                 setAnswers({});
                 setImageFiles({});
                 setFieldErrors({});
@@ -318,34 +349,45 @@ function CollectContent({ surveyId }: { surveyId: string }) {
 
       <Stepper steps={steps} current={step} />
 
-      {step === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Who are you interviewing?</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RespondentStep selected={respondent} onSelect={setRespondent} />
-          </CardContent>
-        </Card>
-      )}
-
-      {consentRequired && step === 1 && (
+      {consentRequired && step === 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Consent</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-sm text-ink-muted">Read this to the respondent before starting.</p>
             {consentNotices.isPending ? (
               <Skeleton className="h-24 w-full" />
             ) : (
               <div className="max-h-56 overflow-y-auto rounded-md border border-line bg-paper-sunken p-3 text-sm text-ink-muted">
-                {consentNotices.data?.results[0]?.text ?? "Read the consent notice aloud to the respondent."}
+                {notice?.text ?? "This survey has no consent notice configured yet — ask an administrator to set one up in the survey builder."}
               </div>
             )}
-            <label className="flex items-start gap-2 text-sm text-ink">
-              <Checkbox checked={consentAcknowledged} onCheckedChange={(c) => setConsentAcknowledged(c === true)} className="mt-0.5" />
-              I have read this notice to the respondent and they have granted consent to proceed.
-            </label>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-ink">Respondent&rsquo;s signature</span>
+                <Button variant="ghost" size="sm" onClick={() => sigRef.current?.clear()}>
+                  Clear
+                </Button>
+              </div>
+              <SignaturePad ref={sigRef} height={180} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {step === respondentStepIndex && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Who are you interviewing?</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RespondentStep
+              selected={respondent}
+              onSelect={setRespondent}
+              demographicQuestions={schema.data.demographic_questions}
+              choiceLists={choiceLists}
+            />
           </CardContent>
         </Card>
       )}
@@ -360,7 +402,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
                   <CardTitle>{section.title.en ?? section.code}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {section.questions
+                  {sortSectionQuestions(section)
                     .filter((q) => isQuestionRelevant(section, q, answersForEval))
                     .map((q) => {
                       const isBranch = branchParentCode(section, q) !== null;
@@ -406,7 +448,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
                   <CardTitle>{section.title.en ?? section.code}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2.5">
-                  {section.questions
+                  {sortSectionQuestions(section)
                     .filter((q) => relevantCodes.has(q.code))
                     .map((q) => {
                       const isBranch = branchParentCode(section, q) !== null;
@@ -438,21 +480,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
           Back
         </Button>
         {step < reviewStepIndex ? (
-          <Button
-            onClick={() => {
-              if (step === 0 && !respondent) {
-                toast.error("Select or add a respondent to continue.");
-                return;
-              }
-              if (step === answersStepIndex) {
-                if (!validateAnswers()) return;
-                setStep((s) => s + 1);
-                return;
-              }
-              goToAnswers();
-            }}
-            loading={captureConsent.isPending}
-          >
+          <Button onClick={handleContinue} loading={captureConsent.isPending}>
             Continue <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (

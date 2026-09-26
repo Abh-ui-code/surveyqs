@@ -9,7 +9,7 @@ import json
 from django.db import transaction
 from django.utils import timezone
 
-from apps.surveys.models import Question, Section, Survey, SurveyVersion
+from apps.surveys.models import Question, Section, Survey, SurveyDemographicField, SurveyVersion
 from apps.surveys.validators import ValidationReport, validate_survey_structure
 
 
@@ -61,6 +61,29 @@ def _serialize_section(section) -> dict:
     }
 
 
+def _serialize_demographic_field(field) -> dict:
+    data = {
+        "id": str(field.id),
+        "code": field.code,
+        "order": field.order,
+        "type": field.type,
+        "label": field.label,
+        "hint": field.hint,
+        "required": (
+            True if field.is_required == "true"
+            else False if field.is_required == "false"
+            else field.is_required
+        ),
+        "constraint": field.constraint or None,
+        "constraint_message": field.constraint_message or None,
+        "is_pii": field.is_pii,
+        "config": dict(field.config or {}),
+    }
+    if field.choice_list_id:
+        data["config"]["choice_list"] = field.choice_list.name
+    return data
+
+
 def _serialize_choice_list(choice_list) -> dict:
     return {
         "name": choice_list.name,
@@ -78,14 +101,33 @@ def _serialize_choice_list(choice_list) -> dict:
     }
 
 
+def _serialize_consent_notice(survey: Survey) -> dict | None:
+    notice_id = survey.settings.get("consent_notice_id")
+    if not notice_id:
+        return None
+    from apps.respondents.models import ConsentNotice
+
+    notice = ConsentNotice.objects.filter(id=notice_id).first()
+    if not notice:
+        return None
+    return {"id": str(notice.id), "version": notice.version, "language": notice.language, "text": notice.text}
+
+
 def build_form_package(survey: Survey, draft_version: SurveyVersion, version_number: int) -> dict:
     """
     The single place the relational, editable structure becomes the shipped
     JSON. Everything downstream -- both renderers, the validator, the
     exporter -- reads only this output, which is what keeps the frozen
     artefact and the editable rows from drifting apart.
+
+    `consent_notice` is embedded (not just referenced by
+    `settings.consent_notice_id`) so the offline mobile client has the
+    actual notice text cached for the consent screen before it ever needs
+    a network call -- the same reason sections/choice_lists/demographic
+    questions are embedded rather than fetched separately.
     """
     sections = draft_version.sections.order_by("order")
+    demographic_fields = draft_version.demographic_fields.order_by("order")
     return {
         "schema_version": "1.0",
         "survey_id": str(survey.id),
@@ -95,8 +137,10 @@ def build_form_package(survey: Survey, draft_version: SurveyVersion, version_num
         "category": {"id": str(survey.category_id), "code": survey.category.code, "label": survey.category.label},
         "instructions": survey.instructions,
         "settings": survey.settings,
+        "consent_notice": _serialize_consent_notice(survey),
         "choice_lists": [_serialize_choice_list(cl) for cl in draft_version.choice_lists.all()],
         "sections": [_serialize_section(s) for s in sections],
+        "demographic_questions": [_serialize_demographic_field(f) for f in demographic_fields],
     }
 
 
@@ -148,6 +192,19 @@ def _clone_structure(source: SurveyVersion, target: SurveyVersion):
             question_map[q.id] = _clone_question(q, new_section, choice_list_map, parent=None)
         for q in section.questions.filter(parent_question__isnull=False).order_by("order"):
             _clone_question(q, new_section, choice_list_map, parent=question_map[q.parent_question_id])
+
+    SurveyDemographicField.objects.bulk_create(
+        [
+            SurveyDemographicField(
+                version=target, code=f.code, type=f.type, order=f.order,
+                label=f.label, hint=f.hint, is_required=f.is_required, is_pii=f.is_pii,
+                constraint=f.constraint, constraint_message=f.constraint_message,
+                choice_list=choice_list_map.get(f.choice_list_id) if f.choice_list_id else None,
+                config=f.config,
+            )
+            for f in source.demographic_fields.order_by("order")
+        ]
+    )
 
 
 def _clone_question(question, new_section, choice_list_map, parent):
@@ -209,6 +266,87 @@ def create_question_from_bank(section: Section, bank_question) -> Question:
         constraint=bank_question.constraint, constraint_message=bank_question.constraint_message,
         choice_list=choice_list, config=bank_question.config,
     )
+
+
+def _unique_demographic_code_for_version(base_code: str, version: SurveyVersion) -> str:
+    existing = set(SurveyDemographicField.objects.filter(version=version).values_list("code", flat=True))
+    if base_code not in existing:
+        return base_code
+    n = 2
+    while f"{base_code}_{n}" in existing:
+        n += 1
+    return f"{base_code}_{n}"
+
+
+def create_demographic_field_from_bank(version: SurveyVersion, demographic_question) -> SurveyDemographicField:
+    """Copies a `DemographicQuestion` into `version` as a
+    `SurveyDemographicField`, exactly mirroring create_question_from_bank."""
+    from apps.surveys.models import Choice, ChoiceList
+
+    code = _unique_demographic_code_for_version(demographic_question.code, version)
+    next_order = SurveyDemographicField.objects.filter(version=version).count()
+
+    choice_list = None
+    if demographic_question.choices:
+        choice_list = ChoiceList.objects.create(version=version, name=f"{code}_choices")
+        Choice.objects.bulk_create(
+            [
+                Choice(
+                    choice_list=choice_list,
+                    value=c["value"], label=c["label"], order=c.get("order", i),
+                )
+                for i, c in enumerate(demographic_question.choices)
+            ]
+        )
+
+    return SurveyDemographicField.objects.create(
+        version=version, code=code, type=demographic_question.type, order=next_order,
+        label=demographic_question.label, hint=demographic_question.hint,
+        is_required=demographic_question.is_required, is_pii=demographic_question.is_pii,
+        constraint=demographic_question.constraint, constraint_message=demographic_question.constraint_message,
+        choice_list=choice_list, config=demographic_question.config,
+    )
+
+
+def set_survey_consent(survey: Survey, *, required: bool, text: str = "", language: str = "en") -> Survey:
+    """
+    Configures this survey's consent requirement -- see
+    docs/product/RESPONDENT_AND_CONSENT.md. Each survey owns its own
+    `ConsentNotice` row rather than sharing one tenant-wide: editing the
+    text of an already-published survey creates a new version instead of
+    rewriting the text underneath consents already captured against it; a
+    still-draft survey's notice is safe to edit in place.
+    """
+    from apps.respondents.models import ConsentNotice
+
+    settings = dict(survey.settings)
+    if not required:
+        settings["consent_required"] = False
+        survey.settings = settings
+        survey.save(update_fields=["settings"])
+        return survey
+
+    notice_id = settings.get("consent_notice_id")
+    existing = ConsentNotice.objects.filter(id=notice_id).first() if notice_id else None
+    if existing and survey.status == "draft":
+        existing.text = text
+        existing.language = language
+        existing.save(update_fields=["text", "language"])
+        notice = existing
+    else:
+        next_version = (
+            ConsentNotice.objects.filter(language=language)
+            .order_by("-version").values_list("version", flat=True).first()
+            or 0
+        ) + 1
+        notice = ConsentNotice.objects.create(version=next_version, language=language, text=text, is_active=True)
+
+    settings["consent_required"] = True
+    settings["consent_notice_id"] = str(notice.id)
+    settings.setdefault("consent_methods", ["signature"])
+    survey.settings = settings
+    survey.save(update_fields=["settings"])
+    return survey
 
 
 def next_version_number(survey: Survey) -> int:

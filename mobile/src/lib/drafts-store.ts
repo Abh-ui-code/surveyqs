@@ -30,9 +30,12 @@ export interface DraftRespondent {
    * (RespondentStep in collect/_components) — kept identical so a
    * respondent created from either client looks the same record. */
   email?: string;
-  gender?: string;
-  address?: string;
   geography_node?: string;
+  /** Answers to this survey's admin-selected demographic questions
+   * (FormPackage.demographic_questions), keyed by question code — mirrors
+   * the web form's `custom_fields` payload, stored on Respondent
+   * .custom_fields server-side. */
+  custom_fields?: Record<string, unknown>;
 }
 
 export interface DraftConsent {
@@ -40,7 +43,12 @@ export interface DraftConsent {
   language: string;
   method: ConsentMethod;
   granted_at: string;
-  signature_local_uri?: string;
+  /** Base64 PNG straight out of `<SignaturePad>.toBase64()` — kept in
+   * memory/local storage as a string like every other draft field rather
+   * than written to a file, since it's sent inline in the sync payload
+   * (apps/responses/sync_views.py's `consent.create` item), never
+   * uploaded as a separate attachment. */
+  signature_base64?: string;
 }
 
 export interface InterviewDraft {
@@ -48,10 +56,8 @@ export interface InterviewDraft {
   userId: string | null;
   surveyId: string;
   surveyTitle: string;
-  /** Absent for a resubmission draft — a rejected response's original
-   * assignment isn't exposed by the read API, and the server accepts a
-   * submission without one (apps/responses/services.py only reads it via
-   * `.get`). */
+  /** The server accepts a submission without one — apps/responses/
+   * services.py only reads it via `.get`. */
   assignmentId?: string;
   versionId: string;
   schemaHash?: string;
@@ -62,9 +68,6 @@ export interface InterviewDraft {
   answers: AnswerMap;
   gps?: GeoPoint;
   attachments: PendingAttachment[];
-  /** Set when this draft is an edit of a response the office rejected —
-   * resubmitting reuses this id server-side instead of creating a new one. */
-  resubmitOfResponseId?: string;
   updatedAt: string;
 }
 
@@ -93,11 +96,9 @@ export interface CreateDraftInput {
   assignmentId?: string;
   versionId: string;
   schemaHash?: string;
-  resubmitOfResponseId?: string;
-  initialAnswers?: AnswerMap;
 }
 
-/** Create — a fresh interview, or a rejected response reopened for edit. */
+/** Create a fresh interview draft. */
 export async function createDraft(input: CreateDraftInput): Promise<InterviewDraft> {
   const draft: InterviewDraft = {
     id: newId(),
@@ -111,9 +112,8 @@ export async function createDraft(input: CreateDraftInput): Promise<InterviewDra
     currentSectionIndex: 0,
     respondent: null,
     consent: null,
-    answers: input.initialAnswers ?? {},
+    answers: {},
     attachments: [],
-    resubmitOfResponseId: input.resubmitOfResponseId,
     updatedAt: new Date().toISOString(),
   };
   const all = await readAll();

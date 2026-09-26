@@ -4,7 +4,12 @@ typed `Answer` rows or `SurveyResponse` columns directly -- never the
 `answers` JSONB document, which is the read-cache for rendering a single
 response, not for aggregating across many. See
 docs/architecture/ANSWER_STORAGE.md.
+
+`ExportResponsesView` is the one deliberate exception to that rule -- see
+its docstring and apps/reports/services.py.
 """
+from django.http import HttpResponse
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -74,3 +79,55 @@ class SurveySummaryView(APIView):
                 ],
             }
         )
+
+
+class ExportResponsesView(APIView):
+    """
+    Backs both the Master Report (no query params -- every response the
+    caller can see) and the Filtered Report (`survey`/`agent`/`date_from`/
+    `date_to`, any combination) on the web app -- one query, one file
+    format, per docs/product/REPORTING_AND_EXPORTS.md's stated principle
+    that the filters and the export are the same query. See
+    apps/reports/services.py for why this view reads the `answers` JSONB
+    document rather than typed `Answer` rows, unlike its siblings above.
+    """
+
+    module_code = "reports"
+    required_action = "export"
+    permission_classes = [IsAuthenticated, HasPermission]
+
+    def get(self, request):
+        import uuid
+
+        from rest_framework.exceptions import ValidationError
+
+        from apps.reports.services import export_responses
+
+        survey_id = request.query_params.get("survey") or None
+        collected_by_id = request.query_params.get("agent") or None
+        for param_name, value in (("survey", survey_id), ("agent", collected_by_id)):
+            if value is not None:
+                try:
+                    uuid.UUID(value)
+                except ValueError as exc:
+                    raise ValidationError({param_name: "Must be a valid id."}) from exc
+
+        date_from_raw = request.query_params.get("date_from")
+        date_to_raw = request.query_params.get("date_to")
+        date_from = parse_date(date_from_raw) if date_from_raw else None
+        date_to = parse_date(date_to_raw) if date_to_raw else None
+
+        buffer = export_responses(
+            request.user,
+            survey_id=survey_id,
+            collected_by_id=collected_by_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        filename = f"responses-{timezone.now().strftime('%Y%m%d-%H%M%S')}.xlsx"
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response

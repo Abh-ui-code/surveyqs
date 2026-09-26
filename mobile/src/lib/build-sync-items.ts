@@ -27,9 +27,8 @@ export function buildSyncItems(draft: InterviewDraft): SyncBatchItem[] {
         full_name: draft.respondent.full_name,
         phone: draft.respondent.phone,
         email: draft.respondent.email || undefined,
-        gender: draft.respondent.gender || undefined,
-        address: draft.respondent.address || undefined,
         geography_node: draft.respondent.geography_node,
+        custom_fields: draft.respondent.custom_fields ?? {},
       },
     });
     parentRef = "r1";
@@ -47,6 +46,7 @@ export function buildSyncItems(draft: InterviewDraft): SyncBatchItem[] {
         method: draft.consent.method,
         granted_at: draft.consent.granted_at,
         captured_offline: true,
+        ...(draft.consent.signature_base64 ? { signature_base64: draft.consent.signature_base64 } : {}),
         ...(parentRef ? {} : { respondent_id: respondentId }),
       },
     });
@@ -72,11 +72,6 @@ export function buildSyncItems(draft: InterviewDraft): SyncBatchItem[] {
       answers: draft.answers,
       attachments: draft.attachments.map(({ local_uri: _local_uri, ...rest }) => rest),
       ...(parentRef ? {} : respondentId ? { respondent: { id: respondentId } } : {}),
-      // Best-effort hint for editing a rejected response — the exact
-      // server-side linkage for "resubmit the same interview, corrected"
-      // needs confirming against apps/responses/services.py before this
-      // ships; an unknown top-level key is safely ignored either way.
-      ...(draft.resubmitOfResponseId ? { response_id: draft.resubmitOfResponseId } : {}),
     },
   });
 

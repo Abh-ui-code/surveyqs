@@ -21,7 +21,6 @@ const ACTIONS: { code: string; label: string }[] = [
   { code: "create", label: "Create" },
   { code: "edit", label: "Edit" },
   { code: "delete", label: "Delete" },
-  { code: "approve", label: "Approve" },
   { code: "export", label: "Export" },
 ];
 

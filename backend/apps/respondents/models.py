@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.core.models import AuthoredModel, BaseModel, SoftDeleteModel
+from apps.surveys.models import validate_question_code
 
 
 class Respondent(SoftDeleteModel, AuthoredModel):
@@ -66,6 +67,41 @@ class Respondent(SoftDeleteModel, AuthoredModel):
         self.save()
 
 
+class DemographicQuestion(SoftDeleteModel, AuthoredModel):
+    """
+    An admin-curated bank of reusable respondent demographic questions --
+    Gender, Occupation, Household size, etc. -- independent of any survey,
+    mirroring apps.question_bank.models.BankQuestion.
+
+    Selecting one into a survey (see
+    apps.surveys.services.create_demographic_field_from_bank) copies its
+    fields onto a brand-new `apps.surveys.models.SurveyDemographicField` row
+    -- a `DemographicQuestion` is never referenced live, so editing or
+    removing one here only changes what future selections look like.
+    """
+
+    code = models.CharField(max_length=63, unique=True, validators=[validate_question_code])
+    type = models.CharField(max_length=30)
+
+    label = models.JSONField(default=dict)
+    hint = models.JSONField(default=dict, blank=True)
+
+    is_required = models.CharField(max_length=1000, blank=True, default="false")
+    is_pii = models.BooleanField(default=False)
+    constraint = models.CharField(max_length=1000, blank=True)
+    constraint_message = models.JSONField(default=dict, blank=True)
+
+    config = models.JSONField(default=dict, blank=True)
+    choices = models.JSONField(default=list, blank=True)  # [{"value","label","order"}, ...] for choice types
+
+    class Meta:
+        app_label = "respondents"
+        ordering = ["code"]
+
+    def __str__(self):
+        return f"{self.code} ({self.type})"
+
+
 class ConsentNotice(BaseModel):
     version = models.PositiveIntegerField()
     language = models.CharField(max_length=10, default="en")
@@ -101,7 +137,7 @@ class ConsentRecord(BaseModel):
     is_withdrawn = models.BooleanField(default=False)
     withdrawn_at = models.DateTimeField(null=True, blank=True)
     purposes = models.JSONField(default=list, blank=True)
-    signature_attachment_id = models.UUIDField(null=True, blank=True)
+    signature_image = models.ImageField(upload_to="consent_signatures/%Y/%m/", null=True, blank=True)
     integrity_hash = models.CharField(max_length=64, blank=True)
     client_ref_id = models.UUIDField(null=True, blank=True)
 
