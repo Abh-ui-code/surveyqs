@@ -308,7 +308,9 @@ def create_demographic_field_from_bank(version: SurveyVersion, demographic_quest
     )
 
 
-def set_survey_consent(survey: Survey, *, required: bool, text: str = "", language: str = "en") -> Survey:
+def set_survey_consent(
+    survey: Survey, *, required: bool, text: str = "", language: str = "en", source_file=None,
+) -> Survey:
     """
     Configures this survey's consent requirement -- see
     docs/product/RESPONDENT_AND_CONSENT.md. Each survey owns its own
@@ -316,7 +318,13 @@ def set_survey_consent(survey: Survey, *, required: bool, text: str = "", langua
     text of an already-published survey creates a new version instead of
     rewriting the text underneath consents already captured against it; a
     still-draft survey's notice is safe to edit in place.
+
+    `source_file` (a PDF/DOCX/TXT upload) takes priority over `text` when
+    both are given -- its extracted text becomes the notice text, and the
+    original file is kept alongside it for reference. Passing `text` alone
+    (no file) is the plain "just type it in" path.
     """
+    from apps.respondents.document_extraction import extract_text
     from apps.respondents.models import ConsentNotice
 
     settings = dict(survey.settings)
@@ -326,12 +334,17 @@ def set_survey_consent(survey: Survey, *, required: bool, text: str = "", langua
         survey.save(update_fields=["settings"])
         return survey
 
+    if source_file is not None:
+        text = extract_text(source_file)
+
     notice_id = settings.get("consent_notice_id")
     existing = ConsentNotice.objects.filter(id=notice_id).first() if notice_id else None
     if existing and survey.status == "draft":
         existing.text = text
         existing.language = language
-        existing.save(update_fields=["text", "language"])
+        if source_file is not None:
+            existing.source_file = source_file
+        existing.save(update_fields=["text", "language", "source_file"])
         notice = existing
     else:
         next_version = (
@@ -339,7 +352,9 @@ def set_survey_consent(survey: Survey, *, required: bool, text: str = "", langua
             .order_by("-version").values_list("version", flat=True).first()
             or 0
         ) + 1
-        notice = ConsentNotice.objects.create(version=next_version, language=language, text=text, is_active=True)
+        notice = ConsentNotice.objects.create(
+            version=next_version, language=language, text=text, source_file=source_file, is_active=True,
+        )
 
     settings["consent_required"] = True
     settings["consent_notice_id"] = str(notice.id)

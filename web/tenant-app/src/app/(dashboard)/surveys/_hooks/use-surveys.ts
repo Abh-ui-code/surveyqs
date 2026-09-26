@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { assignmentKeys, categoryKeys, surveyKeys } from "@/lib/query-keys";
+import { assignmentKeys, categoryKeys, consentKeys, surveyKeys } from "@/lib/query-keys";
 
 export interface SurveyCategory {
   id: string;
@@ -128,13 +128,30 @@ export function useSurvey(id: string) {
  * apps/surveys/services.py::set_survey_consent. Passing `required: false`
  * turns the gate off without touching any already-authored notice text;
  * passing `required: true` (re-)writes it, versioning it server-side when
- * the survey is already published. */
+ * the survey is already published. A `file` (PDF/DOCX/TXT) takes priority
+ * over `text` server-side -- its extracted text becomes the notice. */
 export function useSetSurveyConsent(surveyId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { required: boolean; text?: string; language?: string }) =>
-      api.post<SurveyRow>(`/surveys/${surveyId}/consent-notice/`, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: surveyKeys.detail(surveyId) }),
+    mutationFn: (data: { required: boolean; text?: string; language?: string; file?: File }) => {
+      if (!data.file) {
+        return api.post<SurveyRow>(`/surveys/${surveyId}/consent-notice/`, {
+          required: data.required,
+          text: data.text ?? "",
+          language: data.language ?? "en",
+        });
+      }
+      const form = new FormData();
+      form.append("required", String(data.required));
+      form.append("text", data.text ?? "");
+      form.append("language", data.language ?? "en");
+      form.append("file", data.file);
+      return api.postMultipart<SurveyRow>(`/surveys/${surveyId}/consent-notice/`, form);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: surveyKeys.detail(surveyId) });
+      qc.invalidateQueries({ queryKey: consentKeys.notices() });
+    },
   });
 }
 

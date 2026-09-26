@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { Btn, Card } from "@/components/primitives";
@@ -22,6 +23,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "ConsentCapture">;
  */
 export default function ConsentScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const params = route.params;
   const pkg = useFormPackage(params.versionId);
   const createDraft = useCreateDraft();
@@ -96,7 +98,14 @@ export default function ConsentScreen({ route, navigation }: Props) {
 
         <View>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <Text style={{ color: colors.text, fontSize: 13.5, fontWeight: "700" }}>Respondent's signature</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ color: colors.text, fontSize: 13.5, fontWeight: "700" }}>Respondent's signature</Text>
+              {signed && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: colors.mossSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ color: colors.moss, fontSize: 11, fontWeight: "700" }}>✓ Signed</Text>
+                </View>
+              )}
+            </View>
             <Btn
               title="Clear"
               variant="ghost"
@@ -112,8 +121,16 @@ export default function ConsentScreen({ route, navigation }: Props) {
         </View>
       </ScrollView>
 
-      <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }}>
-        <Btn title="I agree — start interview" disabled={!signed} loading={saving} onPress={onAgree} />
+      <View
+        style={{
+          padding: 16,
+          paddingBottom: insets.bottom + 16,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          backgroundColor: colors.surface,
+        }}
+      >
+        <Btn title={signed ? "I agree — start interview" : "Sign above to continue"} disabled={!signed} loading={saving} onPress={onAgree} />
       </View>
     </View>
   );

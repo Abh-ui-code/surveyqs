@@ -39,9 +39,17 @@ class RespondentLookupResultSerializer(serializers.Serializer):
 
 
 class ConsentNoticeSerializer(serializers.ModelSerializer):
+    source_file_url = serializers.SerializerMethodField()
+
     class Meta:
         model = ConsentNotice
-        fields = ["id", "version", "language", "text", "is_active"]
+        fields = ["id", "version", "language", "text", "source_file_url", "is_active"]
+
+    def get_source_file_url(self, obj):
+        request = self.context.get("request")
+        if not obj.source_file or not request:
+            return None
+        return request.build_absolute_uri(obj.source_file.url)
 
 
 class ConsentRecordSerializer(serializers.ModelSerializer):
@@ -49,11 +57,12 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
     # apps.respondents.services.capture_consent / _decode_signature.
     signature_base64 = serializers.CharField(write_only=True, required=False, allow_blank=True)
     signature_url = serializers.SerializerMethodField()
+    respondent_name = serializers.CharField(source="respondent.full_name", read_only=True, default=None)
 
     class Meta:
         model = ConsentRecord
         fields = [
-            "id", "respondent", "notice", "method", "granted_at", "captured_offline",
+            "id", "respondent", "respondent_name", "notice", "method", "granted_at", "captured_offline",
             "purposes", "signature_base64", "signature_url", "is_withdrawn", "client_ref_id",
         ]
         read_only_fields = ["is_withdrawn"]

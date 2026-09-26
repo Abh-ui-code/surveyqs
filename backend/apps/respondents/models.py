@@ -106,6 +106,10 @@ class ConsentNotice(BaseModel):
     version = models.PositiveIntegerField()
     language = models.CharField(max_length=10, default="en")
     text = models.TextField()
+    # The uploaded PDF/DOCX/TXT `text` was extracted from, kept for
+    # reference/audit -- see apps.respondents.document_extraction. Null
+    # when the admin just typed the text directly instead of uploading one.
+    source_file = models.FileField(upload_to="consent_notices/%Y/%m/", null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

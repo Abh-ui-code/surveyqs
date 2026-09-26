@@ -52,6 +52,7 @@ export const respondentKeys = {
 
 export const consentKeys = {
   notices: () => ["consent-notices"] as const,
+  records: (params: object) => ["consent-records", params] as const,
 };
 
 export const responseKeys = {

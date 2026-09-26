@@ -97,6 +97,7 @@ export interface ConsentNotice {
   version: number;
   language: string;
   text: string;
+  source_file_url: string | null;
   is_active: boolean;
 }
 
@@ -104,6 +105,30 @@ export function useConsentNotices() {
   return useQuery({
     queryKey: consentKeys.notices(),
     queryFn: () => api.list<ConsentNotice>("/consent-notices/"),
+  });
+}
+
+export interface ConsentRecordRow {
+  id: string;
+  respondent: string | null;
+  respondent_name: string | null;
+  notice: string;
+  method: string;
+  granted_at: string;
+  captured_offline: boolean;
+  signature_url: string | null;
+  is_withdrawn: boolean;
+}
+
+/** Every signed consent captured against one notice -- the builder's
+ * Consent card uses this to list who's signed for a given survey (a
+ * notice is 1:1 with the survey that owns it, see
+ * apps.surveys.services.set_survey_consent). */
+export function useConsentRecords(noticeId: string | undefined) {
+  return useQuery({
+    queryKey: consentKeys.records({ notice: noticeId }),
+    queryFn: () => api.list<ConsentRecordRow>("/consents/", { notice: noticeId }),
+    enabled: !!noticeId,
   });
 }
 

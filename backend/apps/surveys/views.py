@@ -137,15 +137,25 @@ class SurveyViewSet(TenantScopedMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="consent-notice")
     def consent_notice(self, request, pk=None):
+        from apps.respondents.document_extraction import DocumentExtractionError
         from apps.surveys.services import set_survey_consent
 
         survey = self.get_object()
-        survey = set_survey_consent(
-            survey,
-            required=bool(request.data.get("required")),
-            text=request.data.get("text", ""),
-            language=request.data.get("language", "en"),
-        )
+        # A multipart upload sends "required" as the literal string
+        # "false", which `bool("false")` would misread as truthy -- parse
+        # it explicitly rather than relying on Python's default coercion.
+        required_raw = request.data.get("required")
+        required = required_raw in (True, "true", "True", "1", 1)
+        try:
+            survey = set_survey_consent(
+                survey,
+                required=required,
+                text=request.data.get("text", ""),
+                language=request.data.get("language", "en"),
+                source_file=request.FILES.get("file"),
+            )
+        except DocumentExtractionError as exc:
+            raise ValidationError({"file": exc.messages}) from exc
         return Response(SurveyDetailSerializer(survey).data)
 
     def _transition(self, request, pk, new_status):

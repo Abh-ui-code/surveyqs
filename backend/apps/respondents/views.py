@@ -100,11 +100,14 @@ class ConsentRecordViewSet(TenantScopedMixin, ModelViewSet):
     REQUIRED_ACTIONS = {"GET": "view", "POST": "create"}
     permission_classes = [HasPermission]
     serializer_class = ConsentRecordSerializer
-    filterset_fields = ["respondent"]
+    # `notice` is how the web app lists "every signed consent for this
+    # survey" -- see ConsentSettingsCard, filtering on
+    # `survey.settings.consent_notice_id`.
+    filterset_fields = ["respondent", "notice"]
     http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
-        return ConsentRecord.objects.select_related("notice").order_by("-granted_at")
+        return ConsentRecord.objects.select_related("notice", "respondent").order_by("-granted_at")
 
     def create(self, request, *args, **kwargs):
         from apps.respondents.services import capture_consent
