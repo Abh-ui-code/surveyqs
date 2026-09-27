@@ -50,7 +50,13 @@ export function buildSyncItems(draft: InterviewDraft): SyncBatchItem[] {
         ...(parentRef ? {} : { respondent_id: respondentId }),
       },
     });
-    parentRef = "c1";
+    // `parentRef` must keep pointing at the respondent item ("r1", or stay
+    // undefined for an existing respondent) -- it feeds `response.submit`'s
+    // own `parent_ref` below, and the backend (sync_views.py) resolves
+    // `_parent_server_id` generically as "the respondent id" regardless of
+    // which item kind it came from. Re-pointing it at "c1" here used to
+    // make the response's respondent_id resolve to the ConsentRecord's id
+    // instead, breaking every submission that captured consent.
   }
 
   const now = new Date().toISOString();
