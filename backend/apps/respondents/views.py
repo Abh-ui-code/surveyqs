@@ -44,9 +44,13 @@ class RespondentViewSet(TenantScopedMixin, ModelViewSet):
     search_fields = ["full_name", "phone", "identity_number"]
 
     def get_queryset(self):
+        from django.db.models import Prefetch
+
         from apps.respondents.scoping import scope_respondents
 
-        qs = Respondent.objects.filter(is_deleted=False).order_by("-created_at")
+        qs = Respondent.objects.filter(is_deleted=False).order_by("-created_at").prefetch_related(
+            Prefetch("consent_records", queryset=ConsentRecord.objects.order_by("-granted_at"))
+        )
         return scope_respondents(qs, self.request.user)
 
     def create(self, request, *args, **kwargs):

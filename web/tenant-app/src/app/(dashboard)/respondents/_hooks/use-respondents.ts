@@ -20,6 +20,7 @@ export interface Respondent {
   is_anonymised: boolean;
   client_ref_id: string | null;
   created_at: string;
+  consent_signature_url: string | null;
 }
 
 export interface RespondentFilters {

@@ -23,14 +23,33 @@ class DemographicQuestionSerializer(serializers.ModelSerializer):
 
 
 class RespondentSerializer(serializers.ModelSerializer):
+    # The respondent's most recent, still-valid consent signature -- consent
+    # is captured once per respondent and reused across all of their
+    # responses (see docs/product/RESPONDENT_AND_CONSENT.md), so this is the
+    # same signature shown on every response report for this respondent.
+    consent_signature_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Respondent
         fields = [
             "id", "full_name", "phone", "alt_phone", "email", "gender", "date_of_birth",
             "identity_number", "address", "geography_node_id", "custom_fields",
             "consent_status", "is_anonymised", "client_ref_id", "created_at",
+            "consent_signature_url",
         ]
         read_only_fields = ["consent_status", "is_anonymised", "created_at"]
+
+    def get_consent_signature_url(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return None
+        record = next(
+            (r for r in obj.consent_records.all() if r.signature_image and not r.is_withdrawn),
+            None,
+        )
+        if not record:
+            return None
+        return request.build_absolute_uri(record.signature_image.url)
 
 
 class RespondentLookupResultSerializer(serializers.Serializer):

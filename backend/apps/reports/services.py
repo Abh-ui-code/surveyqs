@@ -31,8 +31,10 @@ from datetime import datetime
 from io import BytesIO
 
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from PIL import Image as PILImage
 
 from apps.formlogic.relevance import iter_questions
 from apps.responses.models import SurveyResponse
@@ -41,9 +43,14 @@ from apps.responses.scoping import scope_responses
 # Split around the demographic columns, which sit right after the
 # respondent's own contact details (Email) and before agent/submission
 # info -- everything about "who was interviewed" grouped together, ahead
-# of everything about "who collected it and when".
-RESPONDENT_HEADERS = ["Response Code", "Survey", "Full Name", "Phone", "Email"]
+# of everything about "who collected it and when". "Signature" is last in
+# this block, its column position always `len(RESPONDENT_HEADERS)` -- fixed
+# regardless of the dynamic demographic/survey columns appended after it.
+RESPONDENT_HEADERS = ["Response Code", "Survey", "Full Name", "Phone", "Email", "Signature"]
 AGENT_HEADERS = ["Agent Name", "Agent Email", "Submitted At", "Duration (seconds)"]
+
+_SIGNATURE_MAX_HEIGHT_PX = 40
+_SIGNATURE_MAX_WIDTH_PX = 140
 
 _EXCLUDED_TYPES = {"note", "repeat", "matrix_single"}
 _UNSAFE_LEADING_CHARS = ("=", "+", "-", "@", "\t", "\r")
@@ -106,6 +113,38 @@ def _resolve_agents(collected_by_ids):
     return {str(u.id): u for u in User.objects.filter(id__in=collected_by_ids)}
 
 
+def _load_signature_images(respondent_ids) -> dict[str, bytes]:
+    """Latest non-withdrawn consent signature per respondent -- consent is
+    captured once per respondent and reused across all of their responses
+    (see docs/product/RESPONDENT_AND_CONSENT.md), so every response row for
+    that respondent embeds the same signature."""
+    from apps.respondents.models import ConsentRecord
+
+    records = (
+        ConsentRecord.objects.filter(respondent_id__in=respondent_ids, is_withdrawn=False)
+        .exclude(signature_image="")
+        .order_by("respondent_id", "-granted_at")
+    )
+    images: dict[str, bytes] = {}
+    for record in records:
+        respondent_id = str(record.respondent_id)
+        if respondent_id in images:
+            continue  # already have this respondent's latest signature
+        with record.signature_image.open("rb") as f:
+            images[respondent_id] = f.read()
+    return images
+
+
+def _signature_thumbnail(image_bytes: bytes) -> XLImage:
+    with PILImage.open(BytesIO(image_bytes)) as pil_img:
+        width, height = pil_img.size
+    scale = min(_SIGNATURE_MAX_HEIGHT_PX / height, _SIGNATURE_MAX_WIDTH_PX / width, 1)
+    img = XLImage(BytesIO(image_bytes))
+    img.width = max(int(width * scale), 1)
+    img.height = max(int(height * scale), 1)
+    return img
+
+
 def _build_columns_and_rows(responses: list[SurveyResponse]):
     """
     Returns (demographic_headers, survey_headers, rows), each row already
@@ -120,6 +159,7 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
     respondent_ids = {r.respondent_id for r in responses if r.respondent_id}
     respondents_by_id = {str(r.id): r for r in Respondent.objects.filter(id__in=respondent_ids)}
     agents_by_id = _resolve_agents({r.collected_by_id for r in responses})
+    signature_images = _load_signature_images(respondent_ids)
 
     demo_index: dict[str, int] = {}
     demo_headers: list[str] = []
@@ -170,6 +210,7 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
             respondent.full_name if respondent else "",
             respondent.phone if respondent else "",
             respondent.email if respondent else "",
+            None,  # Signature -- rendered as an embedded image, see _write_workbook
         ]
         agent_part = [
             agent.full_name if agent else "",
@@ -177,10 +218,12 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
             r.submitted_at.replace(tzinfo=None) if r.submitted_at else None,
             r.duration_seconds,
         ]
-        prepared_rows.append((respondent_part, demo_values, agent_part, survey_values))
+        signature_bytes = signature_images.get(str(r.respondent_id)) if r.respondent_id else None
+        prepared_rows.append((respondent_part, demo_values, agent_part, survey_values, signature_bytes))
 
     rows = []
-    for respondent_part, demo_values, agent_part, survey_values in prepared_rows:
+    signatures = []
+    for respondent_part, demo_values, agent_part, survey_values, signature_bytes in prepared_rows:
         demo_row = [None] * len(demo_headers)
         for code, value in demo_values.items():
             demo_row[demo_index[code]] = value
@@ -188,11 +231,14 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
         for key, value in survey_values.items():
             survey_row[survey_index[key]] = value
         rows.append(respondent_part + demo_row + agent_part + survey_row)
+        signatures.append(signature_bytes)
 
-    return demo_headers, survey_headers, rows
+    return demo_headers, survey_headers, rows, signatures
 
 
-def _write_workbook(demo_headers: list[str], survey_headers: list[str], rows: list[list]) -> BytesIO:
+def _write_workbook(
+    demo_headers: list[str], survey_headers: list[str], rows: list[list], signatures: list[bytes | None]
+) -> BytesIO:
     wb = Workbook()
     ws = wb.active
     ws.title = "Responses"
@@ -217,6 +263,17 @@ def _write_workbook(demo_headers: list[str], survey_headers: list[str], rows: li
         sample_lengths = [len(str(row[col_index - 1])) for row in rows[:200] if row[col_index - 1] is not None]
         width = max(len(header), max(sample_lengths, default=0)) + 4
         ws.column_dimensions[get_column_letter(col_index)].width = min(max(width, 14), 45)
+
+    # "Signature" always sits at this fixed position within the static
+    # RESPONDENT_HEADERS block, ahead of the dynamic demographic/survey
+    # columns -- see the module docstring comment above RESPONDENT_HEADERS.
+    signature_col_letter = get_column_letter(len(RESPONDENT_HEADERS))
+    ws.column_dimensions[signature_col_letter].width = 22
+    for row_index, image_bytes in enumerate(signatures, start=2):
+        if not image_bytes:
+            continue
+        ws.add_image(_signature_thumbnail(image_bytes), f"{signature_col_letter}{row_index}")
+        ws.row_dimensions[row_index].height = max(ws.row_dimensions[row_index].height or 0, 45)
 
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = ws.dimensions
@@ -245,5 +302,5 @@ def export_responses(user, *, survey_id=None, collected_by_id=None, date_from=No
     responses = list(
         qs.select_related("survey", "survey_version", "respondent").order_by("survey_id", "submitted_at")
     )
-    demo_headers, survey_headers, rows = _build_columns_and_rows(responses)
-    return _write_workbook(demo_headers, survey_headers, rows)
+    demo_headers, survey_headers, rows, signatures = _build_columns_and_rows(responses)
+    return _write_workbook(demo_headers, survey_headers, rows, signatures)

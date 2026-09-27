@@ -253,6 +253,29 @@ function DetailContent({ responseId }: { responseId: string }) {
               </CardContent>
             </Card>
           )}
+
+          {respondent.data?.consent_signature_url && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Consent Signature</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <a
+                  href={respondent.data.consent_signature_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block overflow-hidden rounded-md border border-line bg-paper-sunken"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={respondent.data.consent_signature_url}
+                    alt="Respondent's consent signature"
+                    className="h-24 w-full object-contain"
+                  />
+                </a>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
