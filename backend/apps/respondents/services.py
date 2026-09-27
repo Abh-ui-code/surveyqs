@@ -7,6 +7,7 @@ creating a new record, online or off.
 import base64
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone as dt_timezone
 
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -53,6 +54,19 @@ def create_or_reuse_respondent(*, data: dict, client_ref_id=None, actor=None) ->
     return respondent, True
 
 
+def _parse_dt(value) -> datetime:
+    """The mobile sync API (SyncBatchView) passes `granted_at` straight from
+    JSON -- a raw ISO string, never coerced to a real datetime the way a
+    DRF serializer would (see the web `ConsentRecordViewSet` path, which
+    goes through `ConsentRecordSerializer` and never hits this). Mirrors
+    apps.responses.services._parse_dt, which the sync response.submit path
+    needs for the exact same reason."""
+    if isinstance(value, datetime):
+        return value
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=dt_timezone.utc)
+
+
 def _integrity_hash(*, respondent_id, notice_id, method, granted_at, purposes) -> str:
     payload = f"{respondent_id}|{notice_id}|{method}|{granted_at.isoformat()}|{sorted(purposes)}"
     return hashlib.sha256(payload.encode()).hexdigest()
@@ -79,7 +93,7 @@ def capture_consent(
         if existing:
             return existing, False
 
-    granted_at = granted_at or timezone.now()
+    granted_at = _parse_dt(granted_at) if granted_at else timezone.now()
     purposes = purposes or []
     record = ConsentRecord.objects.create(
         respondent=respondent, notice=notice, method=method, granted_at=granted_at,
