@@ -26,7 +26,11 @@ def relevant_question_codes(schema_json: dict, answers: dict) -> set[str]:
     irrelevant regardless of the question's own condition.
     """
     relevant: set[str] = set()
-    context = EvalContext(answers=answers)
+    # Answers of hidden questions are removed as we go, so a branch of a
+    # hidden branch (C depends on B, B depends on A) hides too even when B
+    # still holds a stale answer.
+    live_answers = dict(answers)
+    context = EvalContext(answers=live_answers)
 
     section_relevance: dict[str, bool] = {}
     for section in schema_json.get("sections", []):
@@ -37,11 +41,14 @@ def relevant_question_codes(schema_json: dict, answers: dict) -> set[str]:
 
     for section, question in iter_questions(schema_json):
         if not section_relevance.get(section["code"], True):
+            live_answers.pop(question["code"], None)
             continue
         expr = question.get("relevant")
         is_relevant = True if not expr else safe_evaluate_bool(parse(expr), context)
         if is_relevant:
             relevant.add(question["code"])
+        else:
+            live_answers.pop(question["code"], None)
 
     return relevant
 

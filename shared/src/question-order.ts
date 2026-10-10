@@ -35,6 +35,22 @@ export function branchParentCode<Q extends BranchableQuestion>(question: Q, sibl
   return siblings.some((q) => q.code === sourceCode) ? sourceCode : null;
 }
 
+/** How many branches deep a question sits: 0 for top-level, 1 for a branch
+ * of a top-level question, 2 for a branch of that branch (A -> B -> C), and
+ * so on. A cyclic reference stops the walk rather than looping. */
+export function branchDepth<Q extends BranchableQuestion>(question: Q, siblings: readonly Q[]): number {
+  let depth = 0;
+  const seen = new Set<string>([question.code]);
+  let parent = branchParentCode(question, siblings);
+  while (parent && !seen.has(parent)) {
+    depth += 1;
+    seen.add(parent);
+    const parentQuestion = siblings.find((q) => q.code === parent);
+    parent = parentQuestion ? branchParentCode(parentQuestion, siblings) : null;
+  }
+  return depth;
+}
+
 /**
  * Reorders a flat list of sibling questions so every branch question sits
  * directly after its parent, however they arrived out of order (a drag that

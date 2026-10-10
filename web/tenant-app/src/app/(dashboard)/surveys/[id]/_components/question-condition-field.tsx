@@ -11,7 +11,7 @@ import type { ChoiceListItem, Section } from "../../_hooks/use-surveys";
  * types whose comparisons the evaluator supports identically on the server
  * (backend/apps/formlogic) and on both clients (shared/src/expression.ts,
  * used by mobile and, via this feature, the web collection flow). */
-const SOURCE_TYPES = new Set(["yes_no", "select_one", "select_multiple", "integer", "decimal", "rating"]);
+const SOURCE_TYPES = new Set(["yes_no", "select_one", "select_multiple", "integer", "decimal", "rating", "text"]);
 
 export interface EligibleSource {
   code: string;
@@ -85,7 +85,7 @@ const NUMERIC_OPS = [
 
 function operatorsFor(sourceType: string | undefined): { value: string; label: string }[] {
   if (sourceType === "yes_no") return YES_NO_OPS;
-  if (sourceType === "select_one") return SINGLE_CHOICE_OPS;
+  if (sourceType === "select_one" || sourceType === "text") return SINGLE_CHOICE_OPS;
   if (sourceType === "select_multiple") return MULTI_CHOICE_OPS;
   return NUMERIC_OPS;
 }
@@ -224,7 +224,7 @@ export function ConditionEditor({
 
       {isConditional && sources.length === 0 && (
         <p className="text-xs text-ink-faint">
-          No earlier Yes/No, choice, number or rating question is available yet to base this on.
+          No earlier Yes/No, choice, number, rating or short-text question is available yet to base this on.
         </p>
       )}
 
@@ -276,7 +276,8 @@ export function ConditionEditor({
           ) : (
             <Input
               className="col-span-2"
-              type="number"
+              type={source?.type === "text" ? "text" : "number"}
+              placeholder={source?.type === "text" ? "Exact answer, e.g. Wheat" : undefined}
               value={condition.value}
               onChange={(e) => onChange({ ...condition, value: e.target.value })}
             />

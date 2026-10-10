@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ResponseStatusBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PermissionGate } from "@/components/permission-gate";
-import { branchParentCode, displayAnswer, sortSectionQuestions, type ChoiceListDef } from "@/lib/form-schema";
+import { branchDepth, displayAnswer, sortSectionQuestions, type ChoiceListDef } from "@/lib/form-schema";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useRespondent } from "../../respondents/_hooks/use-respondents";
@@ -142,14 +142,15 @@ function DetailContent({ responseId }: { responseId: string }) {
                           {sortSectionQuestions(section)
                             .filter((q) => answerCodes.has(q.code))
                             .map((q) => {
-                              const isBranch = branchParentCode(section, q) !== null;
+                              const depth = branchDepth(section, q);
                               return (
                                 <div
                                   key={q.id}
                                   className={cn(
                                     "border-b border-line pb-3 last:border-0 last:pb-0",
-                                    isBranch && "ml-4 border-l-2 border-brand/25 pl-4",
+                                    depth > 0 && "border-l-2 border-brand/25 pl-4",
                                   )}
+                          style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
                                 >
                                   <p className="text-xs text-ink-faint">{q.label.en ?? q.code}</p>
                                   <p className="mt-0.5 text-sm text-ink">

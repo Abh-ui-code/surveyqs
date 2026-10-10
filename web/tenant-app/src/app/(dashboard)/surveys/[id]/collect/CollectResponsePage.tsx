@@ -15,9 +15,8 @@ import { PermissionGate } from "@/components/permission-gate";
 import { useMyPermissions } from "@/hooks/use-permissions";
 import { apiErrorMessage } from "@/lib/api-client/client";
 import {
-  branchParentCode,
+  branchDepth,
   displayAnswer,
-  isQuestionRelevant,
   isSectionRelevant,
   relevantQuestionCodes,
   sortSectionQuestions,
@@ -407,13 +406,14 @@ function CollectContent({ surveyId }: { surveyId: string }) {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {sortSectionQuestions(section)
-                    .filter((q) => isQuestionRelevant(section, q, answersForEval))
+                    .filter((q) => relevantCodes.has(q.code))
                     .map((q) => {
-                      const isBranch = branchParentCode(section, q) !== null;
+                      const depth = branchDepth(section, q);
                       return (
                         <div
                           key={q.id}
-                          className={isBranch ? "ml-4 border-l-2 border-brand/25 pl-4" : undefined}
+                          className={depth > 0 ? "border-l-2 border-brand/25 pl-4" : undefined}
+                          style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
                         >
                           <QuestionField
                             question={q}
@@ -455,14 +455,15 @@ function CollectContent({ surveyId }: { surveyId: string }) {
                   {sortSectionQuestions(section)
                     .filter((q) => relevantCodes.has(q.code))
                     .map((q) => {
-                      const isBranch = branchParentCode(section, q) !== null;
+                      const depth = branchDepth(section, q);
                       return (
                         <div
                           key={q.id}
                           className={cn(
                             "flex items-start justify-between gap-4 text-sm",
-                            isBranch && "ml-4 border-l-2 border-brand/25 pl-4",
+                            depth > 0 && "border-l-2 border-brand/25 pl-4",
                           )}
+                          style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
                         >
                           <span className="text-ink-muted">{q.label.en}</span>
                           <span className="max-w-[60%] text-right font-medium text-ink">

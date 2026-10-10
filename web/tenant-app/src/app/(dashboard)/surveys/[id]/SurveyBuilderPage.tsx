@@ -6,7 +6,7 @@ import { ArrowLeft, GripVertical, Pencil, Plus, Trash2, UserCog } from "lucide-r
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { branchParentCode, sortByBranchAdjacency } from "@surveyqs/shared";
+import { branchDepth, sortByBranchAdjacency } from "@surveyqs/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -175,7 +175,7 @@ function BuilderContent({ surveyId }: { surveyId: string }) {
             ) : (
               <ul>
                 {sortByBranchAdjacency(section.questions).map((q) => {
-                  const isBranch = branchParentCode(q, section.questions) !== null;
+                  const depth = branchDepth(q, section.questions);
                   return (
                     <li
                       key={q.id}
@@ -192,10 +192,11 @@ function BuilderContent({ surveyId }: { surveyId: string }) {
                       }}
                       onDragEnd={() => setDraggingId(null)}
                       className={cn(
-                        "flex items-center justify-between gap-4 border-b border-line px-5 py-3 last:border-0",
+                        "flex items-center justify-between gap-4 border-b border-line px-5 py-3 last:border-b-0",
                         draggingId === q.id && "opacity-40",
-                        isBranch && "ml-6 border-l-2 border-brand/25 pl-4",
+                        depth > 0 && "border-l-2 border-brand/25 pl-4",
                       )}
+                      style={depth > 0 ? { marginLeft: depth * 24 } : undefined}
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-ink-faint active:cursor-grabbing" />

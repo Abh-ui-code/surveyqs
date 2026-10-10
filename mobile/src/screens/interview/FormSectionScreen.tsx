@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
-  branchParentCode,
+  branchDepth,
   evaluateExpression,
   sortByBranchAdjacency,
   type AnswerMap,
@@ -65,10 +65,18 @@ export default function FormSectionScreen({ route, navigation }: Props) {
   // some other way) was still visible.
   const visibleQuestions = useMemo(() => {
     if (!section) return [];
-    return sortByBranchAdjacency(section.questions).filter((q) =>
-      evaluateExpression(q.relevant, { answers: localAnswers }, true),
-    );
-  }, [section, localAnswers]);
+    // Walk every section in order, dropping hidden questions' answers as we
+    // go, so a branch of a hidden branch hides too despite a stale answer.
+    const live = { ...localAnswers };
+    const shown = new Set<string>();
+    for (const sec of pkg.data?.sections ?? []) {
+      for (const q of sec.questions) {
+        if (evaluateExpression(q.relevant, { answers: live }, true)) shown.add(q.code);
+        else delete live[q.code];
+      }
+    }
+    return sortByBranchAdjacency(section.questions).filter((q) => shown.has(q.code));
+  }, [section, localAnswers, pkg.data]);
 
   if (pkg.isPending || draft.isPending || !section) {
     return (
@@ -205,7 +213,8 @@ export default function FormSectionScreen({ route, navigation }: Props) {
           // @surveyqs/shared::branchParentCode). Sorting visibleQuestions
           // above is what guarantees it's actually adjacent to render next
           // to; this only decides how to draw it.
-          const isBranch = branchParentCode(q, section.questions) !== null;
+          const depth = branchDepth(q, section.questions);
+          const isBranch = depth > 0;
 
           if (isNote) {
             return (
@@ -217,7 +226,7 @@ export default function FormSectionScreen({ route, navigation }: Props) {
                   padding: 16,
                   flexDirection: "row",
                   gap: 10,
-                  marginLeft: isBranch ? 20 : 0,
+                  marginLeft: depth * 20,
                 }}
               >
                 <Text style={{ fontSize: 16 }}>💡</Text>
@@ -271,7 +280,7 @@ export default function FormSectionScreen({ route, navigation }: Props) {
           return (
             <View
               key={q.id}
-              style={{ marginLeft: 20, borderLeftWidth: 2, borderLeftColor: colors.accentSoft, paddingLeft: 12 }}
+              style={{ marginLeft: depth * 20, borderLeftWidth: 2, borderLeftColor: colors.accentSoft, paddingLeft: 12 }}
             >
               {questionCard}
             </View>

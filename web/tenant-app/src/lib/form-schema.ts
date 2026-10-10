@@ -10,6 +10,7 @@
  * in one place is what keeps them from drifting apart.
  */
 import {
+  branchDepth as sharedBranchDepth,
   branchParentCode as sharedBranchParentCode,
   conditionSourceCode as sharedConditionSourceCode,
   evaluateExpression,
@@ -87,10 +88,14 @@ export function isQuestionRelevant(section: SchemaSection, question: SchemaQuest
 
 export function relevantQuestionCodes(sections: SchemaSection[], answers: AnswerMap): Set<string> {
   const codes = new Set<string>();
+  // Hidden questions' answers are dropped as we go so a branch of a hidden
+  // branch hides too, even when its parent still holds a stale answer.
+  const live: AnswerMap = { ...answers };
   for (const section of sections) {
-    if (!isSectionRelevant(section, answers)) continue;
+    const sectionOk = isSectionRelevant(section, answers);
     for (const q of section.questions) {
-      if (evaluateExpression(q.relevant, { answers }, true)) codes.add(q.code);
+      if (sectionOk && evaluateExpression(q.relevant, { answers: live }, true)) codes.add(q.code);
+      else delete live[q.code];
     }
   }
   return codes;
@@ -109,6 +114,11 @@ export function conditionSourceCode(question: SchemaQuestion): string | null {
  * an earlier section has no adjacent row to nest under, so it stays flush. */
 export function branchParentCode(section: SchemaSection, question: SchemaQuestion): string | null {
   return sharedBranchParentCode(question, section.questions);
+}
+
+/** How many branches deep a question sits (A -> B -> C gives C depth 2). */
+export function branchDepth(section: SchemaSection, question: SchemaQuestion): number {
+  return sharedBranchDepth(question, section.questions);
 }
 
 /** Sorts a section's questions so every branch question sits directly
