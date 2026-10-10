@@ -7,12 +7,14 @@ from one connection because django-tenants sets `search_path` to
 `<tenant>, public`.
 """
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
+from django.db.models import Q
 
 from apps.core.tenant_context import current_tenant
 from apps.core.viewset_mixins import TenantScopedMixin
@@ -31,6 +33,7 @@ class TenantUserViewSet(TenantScopedMixin, ViewSet):
     REQUIRED_ACTIONS = {
         "list": "view", "create": "create", "partial_update": "edit",
         "destroy": "delete", "deactivate": "edit", "reactivate": "edit",
+        "overview": "view",
     }
     permission_classes = [HasPermission]
 
@@ -165,6 +168,127 @@ class TenantUserViewSet(TenantScopedMixin, ViewSet):
         membership.is_active = True
         membership.save(update_fields=["is_active"])
         return Response({"detail": "User reactivated."})
+
+    @action(detail=True, methods=["get"])
+    def overview(self, request, pk=None):
+        """
+        One user's workload: every survey assigned to them (directly or
+        through a team), and how many responses they collected in each,
+        optionally narrowed to a submitted-date range. Surveys they have
+        collected responses for but are no longer assigned to still appear
+        (`assigned: false`), so the totals always equal what they really
+        collected rather than silently dropping revoked work.
+        """
+        import datetime as dt
+
+        from django.db.models import Count, Max
+        from django.db.models.functions import TruncDate
+
+        from apps.assignments.models import SurveyAssignment, TeamMembership
+        from apps.responses.models import SurveyResponse
+
+        tenant = current_tenant(request)
+        try:
+            membership = UserTenantMembership.objects.select_related("user").get(tenant=tenant, user_id=pk)
+        except (UserTenantMembership.DoesNotExist, ValueError, DjangoValidationError):
+            raise NotFound("User not found.")
+        user = membership.user
+
+        def parse_date(name):
+            raw = request.query_params.get(name)
+            if not raw:
+                return None
+            try:
+                return dt.date.fromisoformat(raw)
+            except ValueError:
+                raise ValidationError({name: "Use YYYY-MM-DD."})
+
+        date_from, date_to = parse_date("date_from"), parse_date("date_to")
+        if date_from and date_to and date_from > date_to:
+            raise ValidationError({"detail": "The start date is after the end date."})
+
+        # Assigned surveys: a direct assignment wins over a team one for the
+        # same survey (it carries the user's own target and due date).
+        team_ids = TeamMembership.objects.filter(user_id=user.id).values_list("team_id", flat=True)
+        assignments = (
+            SurveyAssignment.objects.filter(status="active", survey__is_deleted=False)
+            .filter(
+                Q(assignee_type="user", assignee_user_id=user.id)
+                | Q(assignee_type="team", assignee_team_id__in=list(team_ids))
+            )
+            .select_related("survey", "survey__category", "assignee_team")
+            .order_by("assigned_at")
+        )
+        surveys: dict[str, dict] = {}
+        for a in assignments:
+            key = str(a.survey_id)
+            if key in surveys and surveys[key]["assignment"]["source"] == "direct":
+                continue
+            surveys[key] = {
+                "survey_id": key,
+                "title": a.survey.title,
+                "category_label": a.survey.category.label,
+                "survey_status": a.survey.status,
+                "assigned": True,
+                "assignment": {
+                    "source": "direct" if a.assignee_type == "user" else "team",
+                    "team_name": a.assignee_team.name if a.assignee_team_id else None,
+                    "target_count": a.target_count,
+                    "due_date": a.due_date,
+                    "assigned_at": a.assigned_at,
+                },
+                "collected": 0,
+                "last_collected_at": None,
+            }
+
+        responses = SurveyResponse.objects.filter(collected_by_id=user.id, is_deleted=False)
+        if date_from:
+            responses = responses.filter(submitted_at__date__gte=date_from)
+        if date_to:
+            responses = responses.filter(submitted_at__date__lte=date_to)
+
+        per_survey = responses.values("survey_id").annotate(n=Count("id"), last=Max("submitted_at"))
+        counts = {str(row["survey_id"]): row for row in per_survey}
+
+        missing = [sid for sid in counts if sid not in surveys]
+        if missing:
+            from apps.surveys.models import Survey
+
+            for s in Survey.objects.filter(id__in=missing).select_related("category"):
+                surveys[str(s.id)] = {
+                    "survey_id": str(s.id), "title": s.title, "category_label": s.category.label,
+                    "survey_status": s.status, "assigned": False, "assignment": None,
+                    "collected": 0, "last_collected_at": None,
+                }
+        for sid, row in counts.items():
+            if sid in surveys:
+                surveys[sid]["collected"] = row["n"]
+                surveys[sid]["last_collected_at"] = row["last"]
+
+        rows = sorted(surveys.values(), key=lambda s: (-s["collected"], s["title"].lower()))
+        daily = (
+            responses.annotate(day=TruncDate("submitted_at"))
+            .values("day").annotate(n=Count("id")).order_by("day")
+        )
+        total = sum(s["collected"] for s in rows)
+
+        return Response(
+            {
+                "user": {
+                    "id": user.id, "email": user.email, "full_name": user.full_name,
+                    "role_code": membership.role_code, "is_active": membership.is_active,
+                    "last_login_at": user.last_login_at, "joined_at": membership.joined_at,
+                },
+                "date_from": date_from, "date_to": date_to,
+                "totals": {
+                    "assigned_surveys": sum(1 for s in rows if s["assigned"]),
+                    "surveys_with_responses": sum(1 for s in rows if s["collected"] > 0),
+                    "collected": total,
+                },
+                "surveys": rows,
+                "daily": [{"date": d["day"], "count": d["n"]} for d in daily],
+            }
+        )
 
     @staticmethod
     def _is_only_active_admin(tenant, user_id) -> bool:

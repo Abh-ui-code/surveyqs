@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal, UserPlus, Users2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +33,7 @@ const ROLE_TONE: Record<string, { label: string; tone: "brand" | "amber" | "moss
 const ROLES = ["admin", "supervisor", "agent", "analyst"];
 
 function UsersContent() {
+  const router = useRouter();
   const users = useTenantUsers();
   const updateRole = useUpdateUserRole();
   const setActive = useSetUserActive();
@@ -76,6 +78,9 @@ function UsersContent() {
       label: "",
       className: "w-10 text-right",
       render: (row) => (
+        // React events bubble through portals, so without this a click in
+        // the (portaled) menu would also trigger the row's navigation.
+        <div onClick={(e) => e.stopPropagation()}>
         <DropdownMenu>
           <DropdownMenuTrigger className="rounded-md p-1.5 text-ink-faint hover:bg-paper-sunken hover:text-ink">
             <MoreHorizontal className="h-4 w-4" />
@@ -121,6 +126,7 @@ function UsersContent() {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       ),
     },
   ];
@@ -147,6 +153,7 @@ function UsersContent() {
         isLoading={users.isPending}
         isFetching={users.isFetching}
         isError={users.isError}
+        onRowClick={(row) => router.push(`/admin/users/${row.id}`)}
         emptyIcon={Users2}
         emptyTitle="No users yet"
         emptyDescription="Invite your team to get started."

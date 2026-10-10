@@ -29,6 +29,48 @@ export function useTenantUsers() {
   });
 }
 
+export interface UserOverviewSurvey {
+  survey_id: string;
+  title: string;
+  category_label: string;
+  survey_status: string;
+  /** False when the user collected responses here but no longer holds an
+   * active assignment (e.g. it was revoked) -- still counted, so totals
+   * match what they really collected. */
+  assigned: boolean;
+  assignment: {
+    source: "direct" | "team";
+    team_name: string | null;
+    target_count: number | null;
+    due_date: string | null;
+    assigned_at: string;
+  } | null;
+  collected: number;
+  last_collected_at: string | null;
+}
+
+export interface UserOverview {
+  user: TenantUser;
+  date_from: string | null;
+  date_to: string | null;
+  totals: { assigned_surveys: number; surveys_with_responses: number; collected: number };
+  surveys: UserOverviewSurvey[];
+  daily: { date: string; count: number }[];
+}
+
+export function useUserOverview(userId: string, range: { dateFrom?: string; dateTo?: string }) {
+  return useQuery({
+    queryKey: ["admin", "users", userId, "overview", range.dateFrom ?? "", range.dateTo ?? ""],
+    queryFn: () =>
+      api.get<UserOverview>(`/users/${userId}/overview/`, {
+        date_from: range.dateFrom || undefined,
+        date_to: range.dateTo || undefined,
+      }),
+    enabled: !!userId,
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useInviteUser() {
   const qc = useQueryClient();
   return useMutation({
