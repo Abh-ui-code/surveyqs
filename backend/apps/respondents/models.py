@@ -103,6 +103,15 @@ class DemographicQuestion(SoftDeleteModel, AuthoredModel):
 
 
 class ConsentNotice(BaseModel):
+    # The survey this notice text belongs to, and its position in that
+    # survey's own history (v1, v2, ...). `version` below is the older,
+    # tenant-wide counter kept for the existing unique constraint; what the
+    # product shows people is `survey_version`. Null on notices that predate
+    # the link and could not be matched to a survey.
+    survey = models.ForeignKey(
+        "surveys.Survey", null=True, blank=True, on_delete=models.PROTECT, related_name="consent_notices"
+    )
+    survey_version = models.PositiveIntegerField(null=True, blank=True)
     version = models.PositiveIntegerField()
     language = models.CharField(max_length=10, default="en")
     text = models.TextField()
@@ -115,7 +124,11 @@ class ConsentNotice(BaseModel):
     class Meta:
         app_label = "respondents"
         constraints = [
-            models.UniqueConstraint(fields=["version", "language"], name="uniq_notice_version_language")
+            models.UniqueConstraint(fields=["version", "language"], name="uniq_notice_version_language"),
+            models.UniqueConstraint(
+                fields=["survey", "survey_version"], condition=models.Q(survey__isnull=False),
+                name="uniq_notice_survey_version",
+            ),
         ]
 
     def __str__(self):

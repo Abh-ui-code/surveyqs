@@ -79,10 +79,12 @@ def _assert_active_assignment(user, survey_id, started_at: datetime):
 
 
 def _assert_consent(survey: Survey, respondent_id):
+    """Raises unless consent is satisfied; returns the ConsentRecord relied
+    on (None when this survey needs no consent) so the response can pin it."""
     if not survey.settings.get("consent_required"):
-        return
+        return None
     if survey.settings.get("anonymous"):
-        return
+        return None
     from apps.respondents.models import ConsentRecord
 
     qs = ConsentRecord.objects.filter(respondent_id=respondent_id, is_withdrawn=False)
@@ -92,8 +94,18 @@ def _assert_consent(survey: Survey, respondent_id):
     notice_id = survey.settings.get("consent_notice_id")
     if notice_id:
         qs = qs.filter(notice_id=notice_id)
-    if not qs.exists():
+    record = qs.order_by("-granted_at").first()
+    if record is None:
         raise SubmissionRejected("consent_missing", "This survey requires consent, and none was recorded.")
+    return record
+
+
+def _round_coord(value):
+    """The columns are DecimalField(decimal_places=6); a raw device float
+    carries more digits than that and would be rejected on save."""
+    if value is None or value == "":
+        return None
+    return round(float(value), 6)
 
 
 @transaction.atomic
@@ -112,7 +124,7 @@ def submit_response(*, user, payload: dict) -> tuple[SurveyResponse, str, list[d
     _assert_active_assignment(user, payload["survey_id"], started_at)
 
     respondent_id = payload.get("respondent", {}).get("id") if payload.get("respondent") else None
-    _assert_consent(version.survey, respondent_id)
+    consent_record = _assert_consent(version.survey, respondent_id)
 
     outcome = validate_submission(version.schema_json, payload.get("answers", {}))
     if not outcome.is_valid:
@@ -134,11 +146,11 @@ def submit_response(*, user, payload: dict) -> tuple[SurveyResponse, str, list[d
         answers=outcome.answers,
         started_at=started_at, submitted_at=submitted_at,
         duration_seconds=int((submitted_at - started_at).total_seconds()),
-        gps_lat=gps.get("lat"), gps_lng=gps.get("lng"),
+        gps_lat=_round_coord(gps.get("lat")), gps_lng=_round_coord(gps.get("lng")),
         gps_accuracy_m=gps.get("accuracy_m"), gps_captured_at=gps.get("captured_at"),
         device_id=device.get("id", ""), app_version=device.get("app_version", ""),
         os_version=device.get("os", ""), was_offline=payload.get("was_offline", False),
-        client_ref_id=client_ref_id,
+        client_ref_id=client_ref_id, consent_record=consent_record,
     )
     Answer.objects.bulk_create(build_answer_rows(response, version.schema_json, outcome.answers))
 

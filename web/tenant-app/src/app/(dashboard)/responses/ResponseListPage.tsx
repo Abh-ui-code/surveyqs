@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Flag, WifiOff } from "lucide-react";
+import { BarChart3, Flag, MapPin, WifiOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +68,31 @@ function ResponsesContent() {
           {formatDateTime(row.submitted_at)}
         </div>
       ),
+    },
+    {
+      key: "consent",
+      label: "Consent Version",
+      render: (row) =>
+        row.consent_version != null ? (
+          <span className="font-mono-data inline-flex rounded-md bg-brand-soft px-2 py-0.5 text-xs font-semibold text-brand-strong">
+            v{row.consent_version}
+          </span>
+        ) : (
+          <span className="text-ink-faint">—</span>
+        ),
+    },
+    {
+      key: "gps",
+      label: "GPS Captured",
+      render: (row) =>
+        row.gps_lat != null && row.gps_lng != null ? (
+          <span className="flex items-center gap-1 font-mono-data text-xs text-ink">
+            <MapPin className="h-3.5 w-3.5 text-ink-faint" />
+            {Number(row.gps_lat).toFixed(5)}, {Number(row.gps_lng).toFixed(5)}
+          </span>
+        ) : (
+          <span className="text-ink-faint">Not captured</span>
+        ),
     },
     {
       key: "flags",

@@ -13,6 +13,9 @@ class ResponseListSerializer(serializers.ModelSerializer):
     category_label = serializers.CharField(source="survey.category.label", read_only=True)
     respondent_name = serializers.CharField(source="respondent.full_name", read_only=True, default=None)
     flag_count = serializers.IntegerField(source="flags.count", read_only=True)
+    # The survey's own consent version (v1, v2, ...) this response was
+    # collected under; null when the survey needed no consent.
+    consent_version = serializers.IntegerField(source="consent_record.notice.survey_version", read_only=True, default=None)
 
     class Meta:
         model = SurveyResponse
@@ -20,6 +23,7 @@ class ResponseListSerializer(serializers.ModelSerializer):
             "id", "response_code", "survey", "survey_title", "category_label", "survey_version",
             "respondent", "respondent_name", "collected_by_id", "status",
             "submitted_at", "duration_seconds", "flag_count", "was_offline",
+            "gps_lat", "gps_lng", "gps_accuracy_m", "consent_version",
         ]
 
 
@@ -52,6 +56,6 @@ class ResponseDetailSerializer(ResponseListSerializer):
 
     class Meta(ResponseListSerializer.Meta):
         fields = ResponseListSerializer.Meta.fields + [
-            "version_number", "answers", "started_at", "gps_lat", "gps_lng", "gps_accuracy_m",
+            "version_number", "answers", "started_at", "gps_captured_at",
             "device_id", "app_version", "is_edited", "attachments", "flags",
         ]

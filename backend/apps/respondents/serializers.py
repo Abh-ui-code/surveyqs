@@ -62,7 +62,7 @@ class ConsentNoticeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ConsentNotice
-        fields = ["id", "version", "language", "text", "source_file_url", "is_active"]
+        fields = ["id", "version", "survey_version", "language", "text", "source_file_url", "is_active"]
 
     def get_source_file_url(self, obj):
         request = self.context.get("request")

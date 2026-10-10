@@ -27,7 +27,7 @@ class ResponseViewSet(TenantScopedMixin, ReadOnlyModelViewSet):
         from apps.responses.scoping import scope_responses
 
         qs = SurveyResponse.objects.select_related(
-            "survey", "survey__category", "survey_version", "respondent"
+            "survey", "survey__category", "survey_version", "respondent", "consent_record__notice"
         ).prefetch_related("flags", "attachments").filter(is_deleted=False)
         return scope_responses(qs, self.request.user)
 

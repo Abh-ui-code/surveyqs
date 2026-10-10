@@ -352,7 +352,14 @@ def set_survey_consent(
             .order_by("-version").values_list("version", flat=True).first()
             or 0
         ) + 1
+        # This survey's own v1, v2, ... -- what consent screens show.
+        next_survey_version = (
+            ConsentNotice.objects.filter(survey=survey)
+            .order_by("-survey_version").values_list("survey_version", flat=True).first()
+            or 0
+        ) + 1
         notice = ConsentNotice.objects.create(
+            survey=survey, survey_version=next_survey_version,
             version=next_version, language=language, text=text, source_file=source_file, is_active=True,
         )
 

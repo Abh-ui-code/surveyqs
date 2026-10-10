@@ -95,6 +95,8 @@ export function useCreateRespondent() {
 export interface ConsentNotice {
   id: string;
   version: number;
+  /** This survey's own consent version (v1, v2...). Null on legacy notices never linked to a survey. */
+  survey_version: number | null;
   language: string;
   text: string;
   source_file_url: string | null;
@@ -153,6 +155,7 @@ export interface SubmitResponsePayload {
   submitted_at: string;
   answers: Record<string, unknown>;
   was_offline: boolean;
+  gps?: { lat: number; lng: number; accuracy_m: number; captured_at: string };
 }
 
 interface SyncBatchItemResult {
@@ -205,6 +208,26 @@ export function useSubmitResponse() {
       qc.invalidateQueries({ queryKey: ["responses"] });
       qc.invalidateQueries({ queryKey: ["surveys"] });
     },
+  });
+}
+
+/** Best-effort browser location for the submission. Resolves undefined
+ * (never rejects) when unsupported, denied or timed out, so a missing fix
+ * never blocks submitting. */
+export function captureSubmitLocation(): Promise<SubmitResponsePayload["gps"]> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(undefined);
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy_m: pos.coords.accuracy,
+          captured_at: new Date(pos.timestamp).toISOString(),
+        }),
+      () => resolve(undefined),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    );
   });
 }
 

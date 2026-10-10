@@ -49,6 +49,13 @@ class SurveyResponse(SoftDeleteModel):
 
     client_ref_id = models.UUIDField(null=True, blank=True)  # the offline idempotency key
 
+    # The consent this response was collected under -- fixes which version of
+    # the consent text the respondent actually agreed to, even after the
+    # survey's notice is later revised. Null for anonymous / no-consent surveys.
+    consent_record = models.ForeignKey(
+        "respondents.ConsentRecord", null=True, blank=True, on_delete=models.SET_NULL, related_name="responses"
+    )
+
     is_edited = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
     edited_by_id = models.UUIDField(null=True, blank=True)

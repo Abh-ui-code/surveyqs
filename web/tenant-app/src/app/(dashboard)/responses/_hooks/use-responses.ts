@@ -18,15 +18,18 @@ export interface ResponseRow {
   duration_seconds: number | null;
   flag_count: number;
   was_offline: boolean;
+  gps_lat: number | null;
+  gps_lng: number | null;
+  gps_accuracy_m: number | null;
+  /** The survey's own consent version (v1, v2...) this response was collected under; null when none applied. */
+  consent_version: number | null;
 }
 
 export interface ResponseDetail extends ResponseRow {
   version_number: number;
   answers: Record<string, unknown>;
   started_at: string;
-  gps_lat: number | null;
-  gps_lng: number | null;
-  gps_accuracy_m: number | null;
+  gps_captured_at: string | null;
   device_id: string;
   app_version: string;
   is_edited: boolean;

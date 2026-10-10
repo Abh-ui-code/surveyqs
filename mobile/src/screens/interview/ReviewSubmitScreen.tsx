@@ -2,7 +2,8 @@ import { useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { evaluateExpression } from "@surveyqs/shared";
+import * as Location from "expo-location";
+import { evaluateExpression, type GeoPoint } from "@surveyqs/shared";
 
 import { Btn } from "@/components/primitives";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -14,6 +15,31 @@ import { isOnline } from "@/lib/net";
 import type { RootStackParamList } from "@/navigation/types";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ReviewSubmit">;
+
+/** Best-effort fix of where the interview is being submitted. GPS works
+ * without a network connection, so this runs the same offline. Never
+ * blocks or fails a submission: denied permission, a timeout or a device
+ * without a fix just yields undefined and the response goes without GPS. */
+async function captureSubmitLocation(): Promise<GeoPoint | undefined> {
+  try {
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (perm.status !== "granted") return undefined;
+    const pos = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
+    ]);
+    const fix = pos ?? (await Location.getLastKnownPositionAsync());
+    if (!fix) return undefined;
+    return {
+      lat: fix.coords.latitude,
+      lng: fix.coords.longitude,
+      accuracy_m: fix.coords.accuracy ?? 999,
+      captured_at: new Date(fix.timestamp).toISOString(),
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 export default function ReviewSubmitScreen({ route, navigation }: Props) {
   const { colors } = useTheme();
@@ -36,7 +62,8 @@ export default function ReviewSubmitScreen({ route, navigation }: Props) {
   async function submit() {
     setSubmitting(true);
     try {
-      const items = buildSyncItems(draft.data!);
+      const gps = await captureSubmitLocation();
+      const items = buildSyncItems({ ...draft.data!, gps: gps ?? draft.data!.gps });
       await enqueueInterview({
         label: `${draft.data!.surveyTitle} · ${draft.data!.respondent?.full_name || "New respondent"}`,
         items,

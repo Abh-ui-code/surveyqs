@@ -47,7 +47,7 @@ from apps.responses.scoping import scope_responses
 # this block, its column position always `len(RESPONDENT_HEADERS)` -- fixed
 # regardless of the dynamic demographic/survey columns appended after it.
 RESPONDENT_HEADERS = ["Response Code", "Survey", "Full Name", "Phone", "Email", "Signature"]
-AGENT_HEADERS = ["Agent Name", "Agent Email", "Submitted At", "Duration (seconds)"]
+AGENT_HEADERS = ["Agent Name", "Agent Email", "Submitted At", "Duration (seconds)", "GPS Captured", "Consent Version"]
 
 _SIGNATURE_MAX_HEIGHT_PX = 40
 _SIGNATURE_MAX_WIDTH_PX = 140
@@ -105,6 +105,22 @@ def _format_answer(question: dict, value, choice_lists: dict):
     if isinstance(value, list):
         return ", ".join(str(v) for v in value)
     return value
+
+
+def _format_gps(response: SurveyResponse):
+    """"lat, lng" where the submission was made, or blank when none was
+    captured (permission denied, no fix, or a pre-GPS response)."""
+    if response.gps_lat is None or response.gps_lng is None:
+        return None
+    return f"{response.gps_lat:.6f}, {response.gps_lng:.6f}"
+
+
+def _format_consent_version(response: SurveyResponse):
+    """"v2" -- which version of the survey's consent text this response was
+    collected under; blank when the survey needed no consent."""
+    record = response.consent_record
+    version = record.notice.survey_version if record else None
+    return f"v{version}" if version else None
 
 
 def _resolve_agents(collected_by_ids):
@@ -217,6 +233,8 @@ def _build_columns_and_rows(responses: list[SurveyResponse]):
             agent.email if agent else "",
             r.submitted_at.replace(tzinfo=None) if r.submitted_at else None,
             r.duration_seconds,
+            _format_gps(r),
+            _format_consent_version(r),
         ]
         signature_bytes = signature_images.get(str(r.respondent_id)) if r.respondent_id else None
         prepared_rows.append((respondent_part, demo_values, agent_part, survey_values, signature_bytes))
@@ -300,7 +318,7 @@ def export_responses(user, *, survey_id=None, collected_by_id=None, date_from=No
         qs = qs.filter(submitted_at__date__lte=date_to)
 
     responses = list(
-        qs.select_related("survey", "survey_version", "respondent").order_by("survey_id", "submitted_at")
+        qs.select_related("survey", "survey_version", "respondent", "consent_record__notice").order_by("survey_id", "submitted_at")
     )
     demo_headers, survey_headers, rows, signatures = _build_columns_and_rows(responses)
     return _write_workbook(demo_headers, survey_headers, rows, signatures)

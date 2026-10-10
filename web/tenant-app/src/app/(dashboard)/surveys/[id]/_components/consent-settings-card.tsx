@@ -1,6 +1,7 @@
 "use client";
 
-import { FileText, Upload, X } from "lucide-react";
+import { FileText, History, Upload, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +63,22 @@ export function ConsentSettingsCard({ survey }: { survey: SurveyRow }) {
     <Card className="mb-4">
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <div>
-          <h3 className="text-sm font-semibold text-ink">Consent</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink">Consent</h3>
+            {required && currentNotice?.survey_version != null && (
+              <Badge tone="brand" title="The consent version respondents sign today">
+                Latest version · v{currentNotice.survey_version}
+              </Badge>
+            )}
+            {required && currentNotice?.survey_version != null && (
+              <Link
+                href={`/consents/${survey.id}`}
+                className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
+              >
+                <History className="h-3 w-3" /> Version history
+              </Link>
+            )}
+          </div>
           <p className="mt-0.5 text-xs text-ink-faint">
             Shown and signed before the respondent&rsquo;s name, phone or anything else is asked.
           </p>
@@ -114,7 +130,12 @@ export function ConsentSettingsCard({ survey }: { survey: SurveyRow }) {
             placeholder="We'd like to ask you some questions about..."
             rows={5}
           />
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-ink-faint">
+              {currentNotice?.survey_version != null && survey.status !== "draft"
+                ? `Saving a change to this published survey's consent creates v${currentNotice.survey_version + 1}; earlier versions stay downloadable.`
+                : ""}
+            </p>
             <Button size="sm" onClick={save} loading={setConsent.isPending}>
               Save consent settings
             </Button>
@@ -136,6 +157,11 @@ export function ConsentSettingsCard({ survey }: { survey: SurveyRow }) {
                     <li key={r.id} className="flex items-center justify-between gap-3 text-sm">
                       <div className="min-w-0">
                         <span className="text-ink">{r.respondent_name ?? "Unnamed respondent"}</span>
+                        {currentNotice.survey_version != null && (
+                          <span className="font-mono-data ml-2 rounded bg-brand-soft px-1.5 py-0.5 text-2xs font-semibold text-brand-strong">
+                            v{currentNotice.survey_version}
+                          </span>
+                        )}
                         <span className="ml-2 text-xs text-ink-faint">{formatDateTime(r.granted_at)}</span>
                         {r.is_withdrawn && (
                           <Badge tone="rust" className="ml-2">

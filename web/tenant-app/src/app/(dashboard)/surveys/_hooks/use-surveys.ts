@@ -151,6 +151,7 @@ export function useSetSurveyConsent(surveyId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: surveyKeys.detail(surveyId) });
       qc.invalidateQueries({ queryKey: consentKeys.notices() });
+      qc.invalidateQueries({ queryKey: ["consent-versions"] });
     },
   });
 }

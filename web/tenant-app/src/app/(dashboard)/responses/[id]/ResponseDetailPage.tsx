@@ -220,13 +220,31 @@ function DetailContent({ responseId }: { responseId: string }) {
                   <span className="text-ink">Offline</span>
                 </div>
               )}
-              {r.gps_lat != null && r.gps_lng != null && (
-                <div className="flex items-center gap-1.5 pt-1 text-ink-muted">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {r.gps_lat.toFixed(5)}, {r.gps_lng.toFixed(5)}
-                  {r.gps_accuracy_m != null && <span className="text-xs">(±{r.gps_accuracy_m.toFixed(0)}m)</span>}
-                </div>
-              )}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-ink-muted">Consent version</span>
+                {r.consent_version != null ? (
+                  <span className="font-mono-data rounded-md bg-brand-soft px-2 py-0.5 text-xs font-semibold text-brand-strong">
+                    v{r.consent_version}
+                  </span>
+                ) : (
+                  <span className="text-ink-faint">Not applicable</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-ink-muted">
+                  <MapPin className="h-3.5 w-3.5" /> GPS Captured
+                </span>
+                {r.gps_lat != null && r.gps_lng != null ? (
+                  <span className="text-ink">
+                    {Number(r.gps_lat).toFixed(5)}, {Number(r.gps_lng).toFixed(5)}
+                    {r.gps_accuracy_m != null && (
+                      <span className="ml-1 text-xs text-ink-muted">(±{Number(r.gps_accuracy_m).toFixed(0)}m)</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-ink-faint">Not captured</span>
+                )}
+              </div>
             </CardContent>
           </Card>
 

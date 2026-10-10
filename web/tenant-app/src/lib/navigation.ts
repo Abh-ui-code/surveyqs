@@ -4,6 +4,7 @@ import {
   FileSpreadsheet,
   LayoutDashboard,
   ListChecks,
+  ScrollText,
   ShieldCheck,
   Sliders,
   UserCog,
@@ -54,6 +55,7 @@ export const NAV: NavEntry[] = [
   leaf("/responses", "Responses", BarChart3, "responses"),
   leaf("/admin/question-bank", "Question bank", BookOpen, "settings"),
   leaf("/admin/demographic-questions", "Demographic questions", UserCog, "settings"),
+  leaf("/consents", "Consent versions", ScrollText, "settings"),
   leaf("/reports", "Reports", FileSpreadsheet, "reports"),
   {
     kind: "group",

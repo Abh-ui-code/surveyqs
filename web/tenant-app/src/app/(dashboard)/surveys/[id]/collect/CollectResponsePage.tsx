@@ -32,6 +32,7 @@ import {
   useConsentNotices,
   useMyActiveAssignment,
   usePublishedVersions,
+  captureSubmitLocation,
   useSubmitResponse,
   useUploadAttachment,
   useVersionSchema,
@@ -251,7 +252,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const cleanedAnswers: Record<string, unknown> = {};
     for (const [code, value] of Object.entries(answers)) {
       if (value !== undefined && relevantCodes.has(code)) cleanedAnswers[code] = value;
@@ -259,6 +260,8 @@ function CollectContent({ surveyId }: { surveyId: string }) {
     for (const [code, file] of Object.entries(imageFiles)) {
       if (file && relevantCodes.has(code)) cleanedAnswers[code] = file.name;
     }
+
+    const gps = await captureSubmitLocation();
 
     submitResponse.mutate(
       {
@@ -270,6 +273,7 @@ function CollectContent({ surveyId }: { surveyId: string }) {
         submitted_at: new Date().toISOString(),
         answers: cleanedAnswers,
         was_offline: false,
+        gps,
       },
       {
         onSuccess: async (result) => {
